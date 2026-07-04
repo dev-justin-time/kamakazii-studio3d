@@ -1,0 +1,57 @@
+{
+  "app": {
+    "name": "KAMAKAZII STUDIO 3D",
+    "subtitle": "3D Model Editor & Game Suite",
+    "shortName": "Studio3D"
+  },
+  "nav": {
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "tools": "Tools",
+    "marketplace": "Marketplace",
+    "help": "Help"
+  },
+  "toolbar": {
+    "file": "File & Selection",
+    "sculpt": "Sculpting & Modeling",
+    "animate": "Animation & Rigging",
+    "material": "Materials & Textures",
+    "ai": "AI & Pipeline",
+    "scene": "Scene & Camera",
+    "world": "World Building",
+    "vfx": "VFX & Particles",
+    "data": "Data & Analysis",
+    "assets": "Assets & Collaboration"
+  },
+  "status": {
+    "ready": "Ready",
+    "loading": "Loading...",
+    "saving": "Saving...",
+    "error": "Error",
+    "fps": "FPS",
+    "verts": "Verts",
+    "tris": "Tris",
+    "noSelection": "No object selected",
+    "objects": "objects"
+  },
+  "search": {
+    "placeholder": "Find tool...",
+    "matches": "{count} tools match '{query}'",
+    "noMatches": "No tools match '{query}'"
+  },
+  "commands": {
+    "newScene": "New Scene",
+    "open": "Open...",
+    "save": "Save",
+    "saveAs": "Save As...",
+    "import": "Import...",
+    "export": "Export...",
+    "undo": "Undo",
+    "redo": "Redo",
+    "selectAll": "Select All",
+    "deselect": "Deselect",
+    "delete": "Delete",
+    "duplicate": "Duplicate"
+  }
+}

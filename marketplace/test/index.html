@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MarketplaceAPI Unit Test</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; background: #111; color: #eee; padding: 2rem; max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+  .result { padding: 1rem; border-radius: 6px; margin: 1rem 0; }
+  .pass { background: #0d2a0d; border: 1px solid #2a6a2a; }
+  .fail { background: #2a0d0d; border: 1px solid #6a2a2a; }
+  .summary { font-size: 0.9rem; color: #aaa; margin-top: 1rem; white-space: pre-wrap; }
+  .detail { font-size: 0.8rem; color: #666; margin-top: 0.5rem; }
+  code { background: #222; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; }
+  #output { margin-top: 1.5rem; }
+  #output div { padding: 6px 10px; border-left: 2px solid #444; margin: 4px 0; font-size: 0.85rem; }
+  .log-ok { border-color: #2a6a2a; color: #8c8; }
+  .log-err { border-color: #6a2a2a; color: #c88; }
+  .log-info { border-color: #2a4a6a; color: #8ac; }
+</style>
+</head>
+<body>
+<h1>🧪 MarketplaceAPI Unit Test</h1>
+<p>Tests that <code>MarketplaceAPI</code> can be imported and instantiated without throwing.</p>
+
+<div id="result" class="result">⏳ Running...</div>
+<div id="output"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://esm.sh/three@0.128.0",
+    "three/addons/": "https://esm.sh/three@0.128.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import { runTest } from './test.js';
+const resultEl = document.getElementById('result');
+const outputEl = document.getElementById('output');
+
+// Capture logs
+const logs = [];
+const origLog = console.log;
+const origWarn = console.warn;
+const origError = console.error;
+console.log = (...args) => { logs.push({type:'ok', text:args.join(' ')}); origLog(...args); };
+console.warn = (...args) => { logs.push({type:'info', text:args.join(' ')}); origWarn(...args); };
+console.error = (...args) => { logs.push({type:'err', text:args.join(' ')}); origError(...args); };
+
+try {
+  const passed = await runTest();
+  if (passed) {
+    resultEl.className = 'result pass';
+    resultEl.innerHTML = '✅ <strong>PASS</strong> — MarketplaceAPI constructed and initialized without errors';
+  } else {
+    resultEl.className = 'result fail';
+    resultEl.innerHTML = '❌ <strong>FAIL</strong> — See errors below';
+  }
+} catch (e) {
+  resultEl.className = 'result fail';
+  resultEl.innerHTML = `❌ <strong>FAIL</strong> — Uncaught: ${escapeHtml(e.message)}`;
+  console.error(e);
+}
+
+// Output logs
+logs.forEach(l => {
+  const d = document.createElement('div');
+  d.className = `log-${l.type}`;
+  d.textContent = l.text;
+  outputEl.appendChild(d);
+});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>

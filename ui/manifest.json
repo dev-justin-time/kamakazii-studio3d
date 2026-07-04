@@ -1,0 +1,49 @@
+{
+  "name": "KAMAKAZII STUDIO 3D",
+  "short_name": "Studio3D",
+  "description": "A browser-based 3D model editor and content creation suite with sculpting, animation, texture painting, physics simulation, and marketplace plugin support.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "window-controls-overlay"],
+  "background_color": "#111111",
+  "theme_color": "#4a9eff",
+  "categories": ["developer tools", "graphics", "productivity"],
+  "orientation": "landscape-primary",
+  "scope": "../",
+  "icons": [
+    {
+      "src": "../assets/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "../assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Scene",
+      "short_name": "New",
+      "description": "Start a new blank scene",
+      "url": "./index.html?new=1",
+      "icons": [{ "src": "../assets/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Open Project",
+      "short_name": "Open",
+      "description": "Open an existing project file",
+      "url": "./index.html?open=1",
+      "icons": [{ "src": "../assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

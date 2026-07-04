@@ -1,0 +1,23 @@
+# Logs
+*.log
+npm-debug.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp / scratch
+*.tmp
+*.bak
+*.orig
+
+# Local env / secrets
+.env
+.env.local
