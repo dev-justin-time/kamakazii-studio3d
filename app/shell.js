@@ -224,6 +224,13 @@ export class StudioShell {
           { id: 'profile',  label: 'Profile',      icon: '👤', desc: 'User settings, preferences' },
         ]
       },
+      {
+        // Single-click modeless actions — bypass the popup system.
+        category: 'Quick Actions',
+        items: [
+          { id: 'reset-view', label: 'Reset View',  icon: '🎯', desc: 'Re-frame camera at 10-unit, 35° downward viewpoint (post-import angle)' },
+        ]
+      },
     ];
 
     this._iconBar.innerHTML = '';
@@ -282,8 +289,19 @@ export class StudioShell {
           if (tooltip) { tooltip.remove(); tooltip = null; }
         });
 
-        // Click → open popup
-        btn.addEventListener('click', () => this._openPopup(id, label));
+        // Click → open popup (or single-click for modeless actions like
+        // 'reset-view' which bypass the popup and fire handleMenuAction)
+        btn.addEventListener('click', () => {
+          if (id === 'reset-view') {
+            const app = (this.state && typeof this.state.get === 'function' && this.state.get('studio'))
+                      || window.ProModelerApp;
+            if (app && typeof app.handleMenuAction === 'function') {
+              app.handleMenuAction('reset-view');
+            }
+            return;
+          }
+          this._openPopup(id, label);
+        });
 
         this._iconBar.appendChild(btn);
       });

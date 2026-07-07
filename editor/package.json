@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "private": true,
+  "comment": "Forces editor/*.js to ESM under Node so the import-normalize unit test (tests/import-normalize.test.mjs) can import them. The browser bundler ignores this field."
+}

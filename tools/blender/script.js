@@ -1241,6 +1241,27 @@ function updateMemoryUsageUI() {
 }
 
 function setupMenuAndFileInput() {
+    // Floating "Reset View" button — mirrors app/engine.js's
+    // handleMenuAction('reset-view') so users can re-frame the camera
+    // at the canonical 10-unit / 35° downward viewpoint after
+    // navigating away.
+    {
+        const btn = document.createElement('button');
+        btn.id = 'blender-reset-view';
+        btn.textContent = '🎯 Reset View';
+        btn.title = 'Re-frame camera at 10-unit / 35° downward viewpoint';
+        btn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9999;padding:8px 14px;border:1px solid #4a9eff;border-radius:6px;background:rgba(74,158,255,0.12);color:#4a9eff;font:600 12px/1 system-ui,sans-serif;cursor:pointer;backdrop-filter:blur(4px);transition:background .15s,color .15s;';
+        btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(74,158,255,0.28)'; btn.style.color = '#fff'; });
+        btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(74,158,255,0.12)'; btn.style.color = '#4a9eff'; });
+        btn.addEventListener('click', () => {
+            const target = activeObject
+                ? new THREE.Vector3().setFromMatrixPosition(activeObject.matrixWorld)
+                : new THREE.Vector3(0, 0, 0);
+            frameAtDistance(camera, controls, target, 10, 35, 25);
+        });
+        document.body.appendChild(btn);
+    }
+
     const importGlbButton = document.getElementById('import-glb');
     const fileInput = document.getElementById('file-input');
 
