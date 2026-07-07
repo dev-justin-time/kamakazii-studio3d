@@ -5,6 +5,11 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
+// Import normalisation: scales + floor-aligns + centres + yaws imported models
+// so they land on the floor at a sensible size facing the camera, with the
+// camera reframed at the canonical 10-unit / 35° viewpoint.
+import { normalizeImport, frameAtDistance } from '../../editor/import-normalize.js';
+
 // Placeholder standalone 3D topic modules (lightweight stubs wired into the app)
 import './scene_helpers.js';
 import './model_importers.js';
@@ -668,7 +673,14 @@ async function loadModelFromFile(file) {
             return;
         }
 
-        addImportedModelToScene(model, file.name);
+        // Normalize: scale + floor + centre + face camera, then frame.
+        // Wrapper root holds the transforms so the GLTF root rotation is kept.
+        const norm = normalizeImport(model, camera, {
+            targetSize: 5,
+            faceCamera: true,
+        });
+        addImportedModelToScene(norm.wrapper, file.name);
+        frameAtDistance(camera, controls, norm.bboxCenter, 10, 35, 25);
     } catch (err) {
         console.error('Error loading model:', err);
         alert('Failed to load model. See console for details.');

@@ -51,7 +51,8 @@ import{
     initializeChatManager, addMessageToChatHistory, currentLanguage, languageConfig
 } from './chat-manager.js';
 
-import { playSound } from './audio-manager.js'; 
+import { playSound } from './audio-manager.js';
+import { normalizeImport, frameAtDistance } from '../../editor/import-normalize.js';
 
 let scene, camera, renderer, controls;
 let gltfLoader;
@@ -309,14 +310,24 @@ class LoadMultipleGLBCommand extends Command {
             return new Promise((resolve, reject) => {
                 gltfLoader.load(fileData.url, (gltf) => {
                     const modelGroup = gltf.scene;
-                    modelGroup.name = fileData.filename; 
-                    modelGroup.userData.isManagedObject = true; 
-                    
-                    context.scene.add(modelGroup);
-                    this.loadedModels.push(modelGroup);
+                    modelGroup.name = fileData.filename;
+
+                    // Normalize: scale + floor + centre + face camera.
+                    // Wrapper holds the transforms so the GLTF root
+                    // rotation (Z-up -> Y-up) is left untouched.
+                    const norm = normalizeImport(modelGroup, context.camera, {
+                        targetSize: 5,
+                        faceCamera: true,
+                    });
+                    const wrapper = norm.wrapper;
+                    wrapper.userData.isManagedObject = true;
+                    wrapper.userData.importSource = fileData.filename;
+
+                    context.scene.add(wrapper);
+                    this.loadedModels.push(wrapper);
 
                     context.addMessageToChatHistory(context.languageConfig[context.currentLanguage].ui.modelLoaded(fileData.filename), 'ai');
-                    resolve(modelGroup);
+                    resolve(wrapper);
                 }, undefined, (error) => {
                     console.error(`An error happened while loading GLB ${fileData.filename}:`, error);
                     context.addMessageToChatHistory(context.languageConfig[context.currentLanguage].ui.modelLoadError(error.message), 'ai');

@@ -9,6 +9,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { normalizeImport } from './import-normalize.js';
 
 const gltfExporter = new GLTFExporter();
 const objExporter = new OBJExporter();
@@ -32,13 +33,12 @@ export class ModelEditor {
     return new Promise((resolve, reject) => {
       try {
         if (source instanceof File) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
+          const reader = new FileReader();            reader.onload = (e) => {
             const loader = new GLTFLoader();
             loader.parse(e.target.result, '', (gltf) => {
               const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              this._finalizeImported(root, source.name);
-              resolve(root);
+              const result = this._finalizeImported(root, source.name);
+              resolve(result.wrapper);
             }, reject);
           };
           reader.onerror = reject;
@@ -50,8 +50,8 @@ export class ModelEditor {
           const loader = new GLTFLoader();
           loader.load(source, (gltf) => {
             const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-            this._finalizeImported(root, source.split('/').pop());
-            resolve(root);
+            const result = this._finalizeImported(root, source.split('/').pop());
+            resolve(result.wrapper);
           }, undefined, reject);
           return;
         }
@@ -83,9 +83,9 @@ export class ModelEditor {
 
             loader.load(source.url, (gltf) => {
               const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              this._finalizeImported(root, nameHint);
+              const result = this._finalizeImported(root, nameHint);
               revokeAll();
-              resolve(root);
+              resolve(result.wrapper);
             }, undefined, (err) => {
               revokeAll();
               reject(err);
@@ -95,8 +95,8 @@ export class ModelEditor {
             const gltfLoader = new GLTFLoader();
             gltfLoader.load(source.url, (gltf) => {
               const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              this._finalizeImported(root, source.name || source.url.split('/').pop());
-              resolve(root);
+              const result = this._finalizeImported(root, source.name || source.url.split('/').pop());
+              resolve(result.wrapper);
             }, undefined, reject);
           }
           return;
@@ -213,18 +213,24 @@ export class ModelEditor {
 
   // Helpers
   _finalizeImported(root, nameHint) {
-    root.name = nameHint || (root.name || 'Imported');
-    root.traverse(c => {
-      if (c.isMesh) {
-        c.castShadow = true;
-        c.receiveShadow = true;
-        c.userData.isEditable = true;
-      }
+    // Normalise scale + floor + XZ-centre via the shared import helper.
+    // We skip face-camera here because ModelEditor does not own a camera;
+    // callers (with access to the active camera) can re-call
+    // normalizeImport(root, theirCamera) or use CameraManager.frameAtDistance.
+    const norm = normalizeImport(root, null, {
+      targetSize: 5,
+      faceCamera: false,
     });
-    this.scene.add(root);
-    this.objects.push(root);
-    // auto-select imported root when possible
-    try { if (typeof this.selectObject === 'function') this.selectObject(root); } catch (e) {}
+    const wrapper = norm.wrapper;
+    wrapper.name = nameHint || root.name || 'Imported';
+    wrapper.userData.isImported = true;
+    if (norm.scaleFactor !== 1) wrapper.userData.importScaleFactor = norm.scaleFactor;
+
+    this.scene.add(wrapper);
+    this.objects.push(wrapper);
+    // auto-select imported wrapper when possible
+    try { if (typeof this.selectObject === 'function') this.selectObject(wrapper); } catch (e) {}
+    return { wrapper, ...norm };
   }
 
   _getSelectedOrScene() {

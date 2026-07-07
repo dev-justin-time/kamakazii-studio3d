@@ -26,6 +26,10 @@ import { CloudSystem } from './modules/CloudSystem.js';
 import { MarketplaceAPI, PluginRegistry } from './modules/marketplace/index.js';
 import { MarketplaceUI } from './modules/marketplace/marketplace-ui.js';
 
+// Import normalisation: scales + floor-aligns + centres + yaws imported models
+// so they always land on the floor at a sensible size facing the camera.
+import { normalizeImport, frameAtDistance } from '../editor/import-normalize.js';
+
 class ProModelerStudio {
     constructor() {
         this.scene = null;
@@ -177,20 +181,37 @@ class ProModelerStudio {
     }
 
     setupDefaultLighting() {
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+        // Well-lit rig: brighter ambient + hemisphere fill so shadowed sides
+        // aren't pitch-dark. Sharper shadow map for crisp model contact.
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
         this.lights.push(ambientLight);
-        
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+
+        const fillLight = new THREE.HemisphereLight(0xddeeff, 0x202028, 0.55);
+        this.scene.add(fillLight);
+        this.lights.push(fillLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.1);
         directionalLight.position.set(5, 10, 5);
         directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.set(2048, 2048);
+        directionalLight.shadow.bias = -0.0005;
         this.scene.add(directionalLight);
         this.lights.push(directionalLight);
-        
+
         const pointLight = new THREE.PointLight(0x4a9eff, 0.5, 100);
         pointLight.position.set(-5, 5, -5);
         this.scene.add(pointLight);
         this.lights.push(pointLight);
+    }
+
+    /**
+     * Place the active camera at a fixed distance and downward elevation
+     * from `target`. Used as the post-import viewpoint + `Reset View` button.
+     * Defaults: distance 10, elevation 35° (downward), azimuth 25° off-axis.
+     */
+    frameAtDistance(target = null, distance = 10, elevationDeg = 35, azimuthDeg = 25) {
+        frameAtDistance(this.camera, this.controls, target, distance, elevationDeg, azimuthDeg);
     }
 
     addDefaultObjects() {
@@ -434,18 +455,38 @@ class ProModelerStudio {
             reader.onload = (e) => {
                 this.gltfLoader.parse(e.target.result, '', (gltf) => {
                     const root = gltf.scene || gltf.scenes[0];
-                    root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
                     root.name = file.name.replace(/\.[^/.]+$/, '');
-                    this.scene.add(root);
-                    this.objects.push(root);
-                    this.selectObject(root);
+
+                    // Normalize: scale to fit, floor-align, centre, face camera.
+                    // The wrapper holds the transforms; the GLTF root's own
+                    // rotation/scale (often a Z-up->Y-up conversion) stays
+                    // untouched to avoid model collapse.
+                    const norm = normalizeImport(root, this.camera, {
+                        targetSize: 5,
+                        faceCamera: true,
+                    });
+                    const wrapper = norm.wrapper;
+                    wrapper.name = root.name;
+
+                    this.scene.add(wrapper);
+                    this.objects.push(wrapper);
+                    this.selectObject(wrapper);
                     this.ui.updateOutliner();
-                    this.frameSelected();
-                    this.ui.log(`Imported ${file.name}`, 'success');
+
+                    // Always frame at the configured 10-unit / 35° viewpoint.
+                    const frameTarget = new THREE.Vector3(
+                        0,
+                        norm.bboxCenter.y,
+                        0
+                    );
+                    this.frameAtDistance(frameTarget, 10, 35, 25);
+                    this.updateNavCubeOrientation();
+
+                    this.ui.log(`Imported ${file.name} at ${norm.bboxSize.x.toFixed(2)}×${norm.bboxSize.y.toFixed(2)}×${norm.bboxSize.z.toFixed(2)}`, 'success');
                     if (this.pluginRegistry) {
-                        this.pluginRegistry.emit('onImport', { source: file.name, object: root });
+                        this.pluginRegistry.emit('onImport', { source: file.name, object: wrapper });
                     }
-                    resolve(root);
+                    resolve(wrapper);
                 }, (err) => {
                     this.ui.log(err.message, 'error');
                     reject(err);
@@ -482,19 +523,32 @@ class ProModelerStudio {
 
             loader.load(pkg.url, (gltf) => {
                 const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-                root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
                 root.name = nameHint.replace(/\.[^/.]+$/, '');
-                this.scene.add(root);
-                this.objects.push(root);
-                this.selectObject(root);
+                root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+
+                // Normalize then add the wrapper.
+                const norm = normalizeImport(root, this.camera, {
+                    targetSize: 5,
+                    faceCamera: true,
+                });
+                const wrapper = norm.wrapper;
+                wrapper.name = nameHint.replace(/\.[^/.]+$/, '');
+
+                this.scene.add(wrapper);
+                this.objects.push(wrapper);
+                this.selectObject(wrapper);
                 this.ui.updateOutliner();
-                this.frameSelected();
-                this.ui.log(`Imported ${nameHint} (${Object.keys(pkg.files).length} files)`, 'success');
+
+                const frameTarget = new THREE.Vector3(0, norm.bboxCenter.y, 0);
+                this.frameAtDistance(frameTarget, 10, 35, 25);
+                this.updateNavCubeOrientation();
+
+                this.ui.log(`Imported ${nameHint} (${Object.keys(pkg.files).length} files) at ${norm.bboxSize.x.toFixed(2)}×${norm.bboxSize.y.toFixed(2)}×${norm.bboxSize.z.toFixed(2)}`, 'success');
                 if (this.pluginRegistry) {
-                    this.pluginRegistry.emit('onImport', { source: pkg.name || nameHint, object: root });
+                    this.pluginRegistry.emit('onImport', { source: pkg.name || nameHint, object: wrapper });
                 }
                 revokeAll();
-                resolve(root);
+                resolve(wrapper);
             }, undefined, (err) => {
                 this.ui.log(`Import failed: ${err.message}`, 'error');
                 revokeAll();
@@ -1225,6 +1279,18 @@ class ProModelerStudio {
             case 'new': this.newProject(); break;
             case 'import': document.getElementById('modelImport')?.click(); break;
             case 'open': document.getElementById('projectOpen')?.click(); break;
+            case 'reset-view':
+                // Re-frame at the canonical 10-unit, 35°-above viewpoint.
+                {
+                    let target = new THREE.Vector3(0, 0, 0);
+                    if (this.selectedObject) {
+                        const box = new THREE.Box3().setFromObject(this.selectedObject);
+                        if (!box.isEmpty()) target = box.getCenter(new THREE.Vector3());
+                    }
+                    this.frameAtDistance(target, 10, 35, 25);
+                    this.ui.log('Camera reset to 10-unit / 35° viewpoint', 'info');
+                }
+                break;
             // ... map other actions
         }
     }
