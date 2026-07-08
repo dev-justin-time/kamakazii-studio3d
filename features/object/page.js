@@ -35,6 +35,53 @@ const meta = {
       ],
       onChange: (val) => window.ProModelerApp?.setTransformMode(val),
     },
+
+    // ── Gizmo Space Toggle ──
+    {
+      key: 'gizmo-space',
+      label: 'Gizmo Space',
+      type: 'select',
+      default: 'world',
+      options: [
+        { value: 'world', label: '🌍 World Space' },
+        { value: 'local', label: '🔃 Local Space' },
+      ],
+      onChange: (val) => {
+        const app = window.ProModelerApp;
+        if (app?._gizmoSpace !== val) app?.toggleGizmoSpace();
+      },
+    },
+
+    // ── Snap Toggle ──
+    {
+      key: 'snap-enable',
+      label: 'Enable Snap (Shift+S)',
+      type: 'toggle',
+      default: false,
+      onChange: (val) => {
+        const app = window.ProModelerApp;
+        if (app?._snapEnabled !== val) app?.toggleSnap();
+      },
+    },
+    {
+      key: 'snap-size',
+      label: 'Snap Size',
+      type: 'number',
+      default: 0.5, min: 0.01, max: 10, step: 0.1,
+      onChange: (val) => window.ProModelerApp?.setSnapSize(parseFloat(val)),
+    },
+
+    // ── Gizmo Size ──
+    {
+      key: 'gizmo-size',
+      label: 'Gizmo Size',
+      type: 'slider',
+      min: 0.5, max: 3, step: 0.1, default: 1,
+      onChange: (val) => window.ProModelerApp?.setGizmoSize(val),
+    },
+
+    { key: 'sep-gizmo-info', type: 'label', label: '💡 W/E/R=modes, X=space, S+Shift=snap, Tab=cycle' },
+
     { key: 'sep3', label: '──────────', type: 'label' },
 
     // ── View Mode ──
@@ -48,6 +95,14 @@ const meta = {
         { value: 'wireframe', label: 'Wireframe' },
       ],
       onChange: (val) => window.ProModelerApp?.setViewMode(val),
+    },
+
+    // ── Fly Mode ──
+    {
+      key: 'fly-mode',
+      label: '✈️ Fly Mode  (` key to toggle)',
+      type: 'button',
+      onClick: () => window.ProModelerApp?.toggleFlyMode(),
     },
   ],
   onApply: (state, app) => {

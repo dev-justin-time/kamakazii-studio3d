@@ -329,8 +329,9 @@ class ProModelerStudio {
             density: 0.1,
             color: new THREE.Color(0x404040),
             create: () => {
+                console.warn('[Engine] volumetricFog.create uses simple THREE.Fog — no true volumetric/fog-volume rendering. Advanced fog requires custom shaders.');
                 this.scene.fog = new THREE.Fog(this.volumetricFog.color, 1, 100);
-                this.ui.log('Volumetric fog enabled', 'success');
+                this.ui.log('Volumetric fog enabled (basic THREE.Fog — not true volumetric)', 'info');
             },
             remove: () => {
                 this.scene.fog = null;
@@ -499,7 +500,9 @@ class ProModelerStudio {
     initializeAdvancedLighting() {
         this.advancedLighting = {
             generateLightmap: (object) => {
-                return { bake: () => this.ui.log('Lightmap baking sim...', 'info') };
+                console.warn('[Engine] advancedLighting.generateLightmap is a stub — no real lightmap baking implemented. Open an issue if you need this feature.');
+                this.ui.log('Lightmap baking: not implemented (stub)', 'warning');
+                return { bake: () => this.ui.log('Lightmap baking: no-op (stub)', 'warning') };
             }
         };
     }
@@ -707,7 +710,11 @@ class ProModelerStudio {
     initializeMorphTargets() {
         this.morphTargets = {
             createTarget: (object, name) => {
-                if (!object.geometry) return;
+                if (!object.geometry) {
+                    console.warn('[Engine] morphTargets.createTarget: object has no geometry');
+                    return;
+                }
+                console.warn('[Engine] morphTargets.createTarget is a simplified implementation — weight animation may not work as expected in complex rigs.');
                 const pos = object.geometry.attributes.position;
                 const target = pos.clone();
                 for(let i=0; i<target.count; i++) target.setY(i, target.getY(i) + Math.random()*0.5);
@@ -715,10 +722,19 @@ class ProModelerStudio {
                 object.geometry.morphAttributes.position.push(target);
                 object.material.morphTargets = true;
                 object.material.needsUpdate = true;
-                this.ui.log(`Created morph ${name}`, 'success');
+                this.ui.log(`Created morph ${name} (simplified)`, 'info');
             },
             setWeight: (object, name, weight) => {
-                if(object.morphTargetInfluences) object.morphTargetInfluences[0] = weight; // simplified
+                if (!object) {
+                    console.warn('[Engine] morphTargets.setWeight: no object provided');
+                    return;
+                }
+                if (!object.morphTargetInfluences) {
+                    console.warn('[Engine] morphTargets.setWeight: object has no morphTargetInfluences');
+                    this.ui.log('Morph target weights: not available on this object', 'warning');
+                    return;
+                }
+                object.morphTargetInfluences[0] = weight; // simplified — only sets first target
                 this.render();
             }
         };

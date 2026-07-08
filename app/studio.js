@@ -63,6 +63,10 @@ export class Studio {
     this._currentEasing = 'linear';
     this._gridSnapEnabled = true;
     this._gizmoSize = 1;
+    this._gizmoSpace = 'world'; // 'world' or 'local'
+    this._snapEnabled = false;
+    this._snapSize = 0.5;
+    this._flyMode = false;
     this._lastFrameTime = performance.now();
     this._elapsed = 0; // elapsed time in seconds for VFX systems
     this._frameDeltas = [];
@@ -119,6 +123,7 @@ export class Studio {
 
     // Transform controls
     this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+    this.transformControls.setSpace('world');
     this.transformControls.addEventListener('dragging-changed', (event) => {
       this.controls.enabled = !event.value;
       // Drag START — capture pre-drag state (use a fresh snapshot that we'll push later)
@@ -252,12 +257,57 @@ export class Studio {
         this.redo();
         return;
       }
+      // Skip transform shortcuts when fly mode is active to avoid conflicts
+      if (!this._flyMode) {
+        // W → Translate mode
+        if (key === 'w') { e.preventDefault(); this.setTransformMode('move'); return; }
+        // E → Rotate mode
+        if (key === 'e' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.setTransformMode('rotate'); return; }
+        // R → Scale mode
+        if (key === 'r' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.setTransformMode('scale'); return; }
+      }
+      // Tab → Cycle transform mode
+      if (key === 'tab') {
+        e.preventDefault();
+        const modes = ['move', 'rotate', 'scale'];
+        const idx = modes.indexOf(this.currentTool);
+        this.setTransformMode(modes[(idx + 1) % modes.length]);
+        return;
+      }
+      // X → Toggle gizmo space (local/world)
+      if (key === 'x' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.toggleGizmoSpace(); return; }
+      // S + Shift → Toggle snap (S alone is blocked because it's used in OrbitControls by default)
+      if (e.shiftKey && key === 's') { e.preventDefault(); this.toggleSnap(); return; }
+      // F → Frame selected
+      if (key === 'f' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.frameSelected(); return; }
+      // Delete/Backspace → Delete selected
+      if (key === 'delete' || key === 'backspace') { e.preventDefault(); this.deleteSelected(); return; }
+      // G → Snap to grid
+      if (key === 'g' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); this.snapToGrid(); return; }
     });
 
     // Nav-cube overlay
     this._createNavCube();
     // Profiler overlay
     this._createProfiler();
+
+    // Fly mode keyboard state for camera movement (separate listener)
+    this._flyKeyDown = (e) => {
+      if (!this._flyMode) return;
+      const key = e.key.toLowerCase();
+      if (['w','a','s','d',' ','shift'].includes(key)) {
+        this._flyKeys[key] = true;
+        e.preventDefault();
+      }
+    };
+    this._flyKeyUp = (e) => {
+      const key = e.key.toLowerCase();
+      if (['w','a','s','d',' ','shift'].includes(key)) {
+        this._flyKeys[key] = false;
+      }
+    };
+    document.addEventListener('keydown', this._flyKeyDown);
+    document.addEventListener('keyup', this._flyKeyUp);
 
     // Start loop
     this._animate();
@@ -438,6 +488,77 @@ export class Studio {
     else if (mode === 'rotate') this.transformControls.setMode('rotate');
     else if (mode === 'scale') this.transformControls.setMode('scale');
     else this.transformControls.detach();
+    log(`Gizmo mode: ${mode}`);
+  }
+
+  /** Toggle gizmo space between local and world */
+  toggleGizmoSpace() {
+    this._gizmoSpace = this._gizmoSpace === 'world' ? 'local' : 'world';
+    this.transformControls.setSpace(this._gizmoSpace);
+    log(`Gizmo space: ${this._gizmoSpace}`);
+  }
+
+  /** Toggle snap on/off for gizmo transforms */
+  toggleSnap() {
+    this._snapEnabled = !this._snapEnabled;
+    if (this._snapEnabled) {
+      this.transformControls.setTranslationSnap(this._snapSize);
+      this.transformControls.setRotationSnap(THREE.MathUtils.degToRad(15));
+      this.transformControls.setScaleSnap(0.1);
+    } else {
+      this.transformControls.setTranslationSnap(null);
+      this.transformControls.setRotationSnap(null);
+      this.transformControls.setScaleSnap(null);
+    }
+    log(`Snap ${this._snapEnabled ? 'ON' : 'OFF'}`);
+  }
+
+  /** Update per-frame effects from the effects system */
+  _updateEffects(time) {
+    if (!this.objects || this.objects.length === 0) return;
+    import('../features/effects/page.js').then(mod => {
+      mod.update(time);
+    }).catch(() => {});
+  }
+
+  /** Set the snap size */
+  setSnapSize(val) {
+    this._snapSize = Math.max(0.01, val);
+    if (this._snapEnabled) {
+      this.transformControls.setTranslationSnap(this._snapSize);
+    }
+    log(`Snap size: ${this._snapSize.toFixed(2)}`);
+  }
+
+  /** Toggle fly mode for WASD camera navigation */
+  toggleFlyMode() {
+    this._flyMode = !this._flyMode;
+    this._flyKeys = {};
+    if (this._flyMode) {
+      this.controls.enabled = false;
+      log('Fly mode ON — WASD to move, mouse to look');
+      // Wire up pointer lock mouse movement for camera look
+      this._flyMouseMoveHandler = (e) => this._onFlyMouseMove(e);
+      document.addEventListener('mousemove', this._flyMouseMoveHandler);
+      // Request pointer lock on click
+      const viewport = document.getElementById('viewport');
+      if (viewport) {
+        const lockClick = () => {
+          viewport.requestPointerLock();
+          viewport.removeEventListener('click', lockClick);
+        };
+        viewport.addEventListener('click', lockClick);
+      }
+    } else {
+      // Clean up fly mode listeners
+      if (this._flyMouseMoveHandler) {
+        document.removeEventListener('mousemove', this._flyMouseMoveHandler);
+        this._flyMouseMoveHandler = null;
+      }
+      document.exitPointerLock();
+      this.controls.enabled = true;
+      log('Fly mode OFF');
+    }
   }
 
   setViewMode(mode) {
@@ -802,11 +923,19 @@ export class Studio {
     if (this.weatherSystem) this.weatherSystem.update(dt, this.camera);
     if (this.waterSystem) this.waterSystem.update(this._elapsed, this.camera);
 
+    // Fly mode camera movement
+    if (this._flyMode && this._flyKeys) {
+      this._updateFlyCamera(dt);
+    }
+
+    // Effects system — update per-frame effects (pulsing, bobbing, rotation, etc.)
+    this._updateEffects(this._elapsed);
+
     this.render();
     const avgDelta = this._frameDeltas.reduce((s, d) => s + d, 0) / this._frameDeltas.length;
     const fps = avgDelta > 0 ? Math.round(1000 / avgDelta) : 60;
     const el = document.getElementById('statusRight');
-    if (el) el.textContent = `FPS: ${fps} | Objects: ${this.objects.length}`;
+    if (el) el.textContent = `FPS: ${fps} | Objects: ${this.objects.length}${this._flyMode ? ' | ✈️ FLY' : ''}${this._snapEnabled ? ' | Snap' : ''}${this._gizmoSpace === 'local' ? ' | Local' : ''}`;
 
     // Update nav-cube orientation
     this._updateNavCube();
@@ -1229,6 +1358,32 @@ export class Studio {
     this._gizmoSize = Math.max(0.5, Math.min(val, 3));
     this.transformControls.size = this._gizmoSize;
     log(`Gizmo size: ${this._gizmoSize.toFixed(1)}`);
+  }
+
+  /** Fly mode camera update — WASD + mouse look via pointer lock */
+  _updateFlyCamera(dt) {
+    if (!this._flyKeys) return;
+    const speed = 8.0 * dt;
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    const right = new THREE.Vector3().crossVectors(dir, this.camera.up).normalize();
+    if (this._flyKeys['w']) this.camera.position.addScaledVector(dir, speed);
+    if (this._flyKeys['s']) this.camera.position.addScaledVector(dir, -speed);
+    if (this._flyKeys['a']) this.camera.position.addScaledVector(right, -speed);
+    if (this._flyKeys['d']) this.camera.position.addScaledVector(right, speed);
+    if (this._flyKeys[' '] || this._flyKeys['space']) this.camera.position.y += speed;
+    if (this._flyKeys['shift']) this.camera.position.y -= speed;
+  }
+
+  /** Handle pointer lock mouse movement for fly mode */
+  _onFlyMouseMove(event) {
+    if (!this._flyMode || document.pointerLockElement !== this.renderer.domElement) return;
+    const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    euler.setFromQuaternion(this.camera.quaternion);
+    euler.y -= event.movementX * 0.002;
+    euler.x -= event.movementY * 0.002;
+    euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, euler.x));
+    this.camera.quaternion.setFromEuler(euler);
   }
 
   // ── Rigging & Animation Detection ──
