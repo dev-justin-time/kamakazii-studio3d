@@ -34,19 +34,27 @@ export class ApplyBevelModifierCommand extends Command {
     }
 
     execute(context) {
-        if (!(this.object instanceof THREE.Mesh) || !((this.originalBaseGeometry || this.object.geometry) instanceof THREE.BoxGeometry)) {
-            console.warn(`Bevel modifier can only be applied to Mesh objects with BoxGeometry. Object: ${this.object.name} has ${this.object.geometry.type}`);
+        if (!(this.object instanceof THREE.Mesh)) {
+            console.warn(`Bevel modifier requires a Mesh. Object: ${this.object.name} is ${this.object.type}`);
             return;
         }
 
-        const parameters = this.originalBaseGeometry.parameters;
-        const width = parameters.width || 1;
-        const height = parameters.height || 1;
-        const depth = parameters.depth || 1;
-        const radius = this.newBevelParams.amount;
-        const segments = Math.floor(this.newBevelParams.segments);
+        let newGeometry;
+        const isBox = (this.originalBaseGeometry || this.object.geometry) instanceof THREE.BoxGeometry;
 
-        const newGeometry = new RoundedBoxGeometry(width, height, depth, segments, radius);
+        if (isBox) {
+            // Optimized path for BoxGeometry: use RoundedBoxGeometry
+            const parameters = this.originalBaseGeometry.parameters;
+            const width = parameters.width || 1;
+            const height = parameters.height || 1;
+            const depth = parameters.depth || 1;
+            const radius = this.newBevelParams.amount;
+            const segments = Math.floor(this.newBevelParams.segments);
+            newGeometry = new RoundedBoxGeometry(width, height, depth, segments, radius);
+        } else {
+            // General path: chamfer edges on any mesh geometry
+            newGeometry = generateBevelGeometry(this.originalBaseGeometry, this.newBevelParams);
+        }
         
         if (this.object.geometry && this.object.geometry !== this.prevAppliedGeometry) {
              this.object.geometry.dispose();
@@ -671,7 +679,14 @@ export function generateScrewGeometry(sourceGeometry, params) {
                 if (sourceGeometry.attributes.uv) {
                     newUvs.push(sourceGeometry.attributes.uv.getX(i), sourceGeometry.attributes.uv.getY(i));
                 } else {
-                    newUvs.push(newVertex.x, newVertex.y); // Fallback if no UVs
+                    // LSCM-style conformal UV unwrap: project vertex onto the screw ribbon surface.
+                    // Use the arc-length along the ribbon (angleProgress) as U,
+                    // and the cross-section position as V.
+                    const u = angleProgress; // 0..1 along ribbon length
+                    // V: normalize vertex position relative to source bounding box center
+                    const vDist = Math.sqrt(newVertex.x * newVertex.x + newVertex.z * newVertex.z);
+                    const v = vDist > 0 ? (Math.atan2(newVertex.z, newVertex.x) / (2 * Math.PI) + 0.5) : 0.5;
+                    newUvs.push(u, v);
                 }
             }
 
@@ -833,3 +848,275 @@ export function generateBendGeometry(sourceGeometry, params) {
 
 // Export the base Command class so other commands in script.js can extend it.
 export { Command };
+
+/**
+ * Generate a beveled (chamfered) version of any arbitrary BufferGeometry.
+ *
+ * Algorithm:
+ *   1. Build edge-face adjacency from the indexed geometry
+ *   2. Identify sharp edges (dihedral angle > angleLimit)
+ *   3. For each sharp edge, duplicate and offset vertices along edge normals
+ *   4. Create chamfer strip faces connecting original and offset vertices
+ *   5. Reassemble into a new BufferGeometry with proper UVs and normals
+ *
+ * @param {THREE.BufferGeometry} sourceGeometry
+ * @param {Object} params
+ * @param {number} params.amount    - Bevel width (offset distance)
+ * @param {number} [params.segments=1] - Subdivisions along the chamfer strip
+ * @param {number} [params.angleLimit=30] - Minimum dihedral angle (degrees) to bevel
+ * @returns {THREE.BufferGeometry}
+ */
+export function generateBevelGeometry(sourceGeometry, params) {
+    const amount = params.amount || 0.1;
+    const segments = Math.max(1, Math.floor(params.segments || 1));
+    const angleLimitRad = THREE.MathUtils.degToRad(params.angleLimit !== undefined ? params.angleLimit : 30);
+
+    // Ensure we have indexed geometry
+    let geo = sourceGeometry;
+    if (!geo.index) {
+        geo = geo.clone();
+        // Create a trivial index for non-indexed geometry
+        const posAttr = geo.attributes.position;
+        const idx = [];
+        for (let i = 0; i < posAttr.count; i++) idx.push(i);
+        geo.setIndex(idx);
+    }
+
+    const positions = geo.attributes.position;
+    // Clone geometry to avoid mutating the input when computing normals
+    if (!geo.attributes.normal) {
+        geo = geo.clone();
+        geo.computeVertexNormals();
+    }
+    const normals = geo.attributes.normal;
+    const uvs = geo.attributes.uv;
+    const index = geo.index;
+
+    const faceCount = index.count / 3;
+    const vertCount = positions.count;
+
+    // ── Step 1: Build edge-face adjacency ──
+    const edgeFaces = new Map(); // "vMin_vMax" -> [{ faceIdx, normal }]
+    const faceNormals = [];
+
+    for (let f = 0; f < faceCount; f++) {
+        const i0 = index.getX(f * 3);
+        const i1 = index.getX(f * 3 + 1);
+        const i2 = index.getX(f * 3 + 2);
+
+        // Compute face normal
+        const p0 = new THREE.Vector3().fromBufferAttribute(positions, i0);
+        const p1 = new THREE.Vector3().fromBufferAttribute(positions, i1);
+        const p2 = new THREE.Vector3().fromBufferAttribute(positions, i2);
+        const e1 = new THREE.Vector3().subVectors(p1, p0);
+        const e2 = new THREE.Vector3().subVectors(p2, p0);
+        const fn = new THREE.Vector3().crossVectors(e1, e2).normalize();
+        faceNormals.push(fn);
+
+        // Register edges
+        const edges = [[i0, i1], [i1, i2], [i2, i0]];
+        for (const [a, b] of edges) {
+            const key = `${Math.min(a, b)}_${Math.max(a, b)}`;
+            if (!edgeFaces.has(key)) edgeFaces.set(key, []);
+            edgeFaces.get(key).push({ faceIdx: f, normal: fn, verts: [a, b] });
+        }
+    }
+
+    // ── Step 2: Identify sharp edges ──
+    const sharpEdges = [];
+    for (const [key, faces] of edgeFaces) {
+        if (faces.length === 2) {
+            const dot = faces[0].normal.dot(faces[1].normal);
+            const dihedral = Math.acos(Math.min(1, Math.max(-1, dot)));
+            if (dihedral >= angleLimitRad) {
+                sharpEdges.push({
+                    key,
+                    v0: faces[0].verts[0],
+                    v1: faces[0].verts[1],
+                    normal0: faces[0].normal,
+                    normal1: faces[1].normal,
+                    face0: faces[0].faceIdx,
+                    face1: faces[1].faceIdx,
+                    dihedral
+                });
+            }
+        }
+    }
+
+    if (sharpEdges.length === 0) {
+        return sourceGeometry.clone(); // No edges to bevel
+    }
+
+    // ── Step 3: Build vertex offset map ──
+    // For each vertex involved in a sharp edge, compute an offset direction
+    // as the average of the bisectors of all adjacent sharp edges.
+    const vertexOffsets = new Map(); // vertIdx -> { offset: Vector3, count: number }
+
+    for (const edge of sharpEdges) {
+        // Edge direction
+        const p0 = new THREE.Vector3().fromBufferAttribute(positions, edge.v0);
+        const p1 = new THREE.Vector3().fromBufferAttribute(positions, edge.v1);
+        const edgeDir = new THREE.Vector3().subVectors(p1, p0).normalize();
+
+        // Bisector of the two face normals (points inward toward the chamfer)
+        const bisector = new THREE.Vector3()
+            .addVectors(edge.normal0, edge.normal1)
+            .normalize();
+
+        // Offset direction: perpendicular to edge, in the plane of the chamfer
+        const offsetDir = new THREE.Vector3()
+            .crossVectors(edgeDir, bisector)
+            .normalize();
+
+        // The actual offset is along the face normals, projected to be perpendicular to the edge
+        // For each vertex, accumulate offset from both adjacent faces
+        for (const vi of [edge.v0, edge.v1]) {
+            if (!vertexOffsets.has(vi)) {
+                vertexOffsets.set(vi, { offset: new THREE.Vector3(), count: 0 });
+            }
+            const entry = vertexOffsets.get(vi);
+            // Offset along each face normal, pulling the vertex inward
+            entry.offset.add(edge.normal0.clone().multiplyScalar(-1));
+            entry.offset.add(edge.normal1.clone().multiplyScalar(-1));
+            entry.count += 2;
+        }
+    }
+
+    // Normalize offsets and scale by amount
+    for (const [vi, entry] of vertexOffsets) {
+        entry.offset.divideScalar(entry.count).normalize().multiplyScalar(amount);
+    }
+
+    // ── Step 4: Build new geometry ──
+    const newPositions = [];
+    const newNormals = [];
+    const newUvs = [];
+    const newIndices = [];
+
+    // Copy original vertices
+    for (let i = 0; i < vertCount; i++) {
+        newPositions.push(positions.getX(i), positions.getY(i), positions.getZ(i));
+        if (normals) {
+            newNormals.push(normals.getX(i), normals.getY(i), normals.getZ(i));
+        }
+        if (uvs) {
+            newUvs.push(uvs.getX(i), uvs.getY(i));
+        }
+    }
+
+    // For each sharp edge, create chamfer strip vertices
+    // Map: "vertIdx_segmentIdx" -> new vertex index
+    const chamferVertMap = new Map();
+
+    function addChamferVertex(origIdx, segIdx) {
+        const mapKey = `${origIdx}_${segIdx}`;
+        if (chamferVertMap.has(mapKey)) return chamferVertMap.get(mapKey);
+
+        const newIdx = newPositions.length / 3;
+        const origPos = new THREE.Vector3().fromBufferAttribute(positions, origIdx);
+        const entry = vertexOffsets.get(origIdx);
+
+        if (entry) {
+            const t = segIdx / segments;
+            // Interpolate along a curve from original to offset position
+            const offsetPos = origPos.clone().add(entry.offset.clone().multiplyScalar(t));
+            newPositions.push(offsetPos.x, offsetPos.y, offsetPos.z);
+        } else {
+            newPositions.push(origPos.x, origPos.y, origPos.z);
+        }
+
+        // Copy normal
+        if (normals) {
+            const n = new THREE.Vector3().fromBufferAttribute(normals, origIdx);
+            newNormals.push(n.x, n.y, n.z);
+        }
+
+        // Copy UV
+        if (uvs) {
+            const u = uvs.getX(origIdx);
+            const v = uvs.getY(origIdx);
+            newUvs.push(u, v);
+        }
+
+        chamferVertMap.set(mapKey, newIdx);
+        return newIdx;
+    }
+
+    // Track which original faces need their edge vertices replaced
+    const faceEdgeReplacements = new Map(); // faceIdx -> { edgeKey -> [newVertIndices] }
+
+    for (const edge of sharpEdges) {
+        // Create chamfer strip vertices for both endpoints at each segment
+        const stripA = []; // segments+1 vertices for v0
+        const stripB = []; // segments+1 vertices for v1
+
+        for (let s = 0; s <= segments; s++) {
+            stripA.push(addChamferVertex(edge.v0, s));
+            stripB.push(addChamferVertex(edge.v1, s));
+        }
+
+        // Create chamfer strip faces (quads split into triangles)
+        for (let s = 0; s < segments; s++) {
+            const a0 = stripA[s], a1 = stripA[s + 1];
+            const b0 = stripB[s], b1 = stripB[s + 1];
+
+            // Two triangles per quad
+            newIndices.push(a0, b0, b1);
+            newIndices.push(a0, b1, a1);
+        }
+
+        // Record that face0 and face1 need their edge vertices replaced
+        // with the innermost chamfer vertices (segment = segments)
+        const innerA = stripA[segments];
+        const innerB = stripB[segments];
+
+        for (const faceIdx of [edge.face0, edge.face1]) {
+            if (!faceEdgeReplacements.has(faceIdx)) faceEdgeReplacements.set(faceIdx, []);
+            faceEdgeReplacements.get(faceIdx).push({
+                edgeKey: edge.key,
+                oldVerts: [edge.v0, edge.v1],
+                newVerts: [innerA, innerB]
+            });
+        }
+    }
+
+    // ── Step 5: Reassemble original faces with replaced vertices ──
+    // Build merged vertMap per face FIRST, then apply — prevents overwrite bug
+    // when a face has multiple sharp edges sharing a vertex.
+    for (let f = 0; f < faceCount; f++) {
+        let i0 = index.getX(f * 3);
+        let i1 = index.getX(f * 3 + 1);
+        let i2 = index.getX(f * 3 + 2);
+
+        const replacements = faceEdgeReplacements.get(f);
+        if (replacements) {
+            // Merge all edge replacements into a single vertMap
+            // (last replacement wins — both point to the same innermost chamfer vertex)
+            const mergedMap = {};
+            for (const rep of replacements) {
+                mergedMap[rep.oldVerts[0]] = rep.newVerts[0];
+                mergedMap[rep.oldVerts[1]] = rep.newVerts[1];
+            }
+
+            if (mergedMap[i0] !== undefined) i0 = mergedMap[i0];
+            if (mergedMap[i1] !== undefined) i1 = mergedMap[i1];
+            if (mergedMap[i2] !== undefined) i2 = mergedMap[i2];
+        }
+
+        newIndices.push(i0, i1, i2);
+    }
+
+    // ── Step 6: Assemble final geometry ──
+    const result = new THREE.BufferGeometry();
+    result.setAttribute('position', new THREE.Float32BufferAttribute(newPositions, 3));
+    if (newNormals.length > 0) {
+        result.setAttribute('normal', new THREE.Float32BufferAttribute(newNormals, 3));
+    }
+    if (newUvs.length > 0) {
+        result.setAttribute('uv', new THREE.Float32BufferAttribute(newUvs, 2));
+    }
+    result.setIndex(newIndices);
+    result.computeVertexNormals();
+
+    return result;
+}

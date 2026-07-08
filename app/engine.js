@@ -6,6 +6,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { safeGetColor, safeCopyColor, safeSetHex, safeSetEmissive } from './material-helpers.js';
 import JSZip from 'jszip';
 // nipplejs is now used inside InputManager, not here directly
 // import nipplejs from 'nipplejs'; 
@@ -23,8 +24,8 @@ import { AudioSystem } from './modules/AudioSystem.js';
 import { CloudSystem } from './modules/CloudSystem.js';
 
 // Import Marketplace
-import { MarketplaceAPI, PluginRegistry } from './modules/marketplace/index.js';
-import { MarketplaceUI } from './modules/marketplace/marketplace-ui.js';
+import { MarketplaceAPI, PluginRegistry } from '../marketplace/index.js';
+import { MarketplaceUI } from '../marketplace/marketplace-ui.js';
 
 // Import normalisation: scales + floor-aligns + centres + yaws imported models
 // so they always land on the floor at a sensible size facing the camera.
@@ -892,14 +893,14 @@ class ProModelerStudio {
         if (preset.transmission || preset.clearcoat || preset.iridescence || preset.sheen) {
             if (material.type !== 'MeshPhysicalMaterial') {
                 const newMat = new THREE.MeshPhysicalMaterial();
-                newMat.color.copy(material.color);
+                safeCopyColor(material.color, newMat.color);
                 newMat.map = material.map;
                 this.selectedObject.material = newMat;
                 material = newMat;
             }
         }
 
-        material.color.setHex(preset.color);
+        safeSetHex(material.color, preset.color);
         material.metalness = preset.metallic !== undefined ? preset.metallic : 0;
         material.roughness = preset.roughness !== undefined ? preset.roughness : 0.5;
         
@@ -920,7 +921,7 @@ class ProModelerStudio {
         if (preset.transmission) { material.transmission = preset.transmission; material.thickness = preset.thickness || 1; }
         if (preset.clearcoat) { material.clearcoat = preset.clearcoat; material.clearcoatRoughness = preset.clearcoatRoughness || 0; }
         if (preset.iridescence) { material.iridescence = preset.iridescence; material.iridescenceIOR = preset.iridescenceIOR || 1.3; }
-        if (preset.emissive) { material.emissive.setHex(preset.emissive); material.emissiveIntensity = preset.emissiveIntensity || 1; }
+        if (preset.emissive) { safeSetEmissive(material, preset.emissive, preset.emissiveIntensity || 1); }
 
         material.needsUpdate = true;
         this.render();
@@ -1039,7 +1040,7 @@ class ProModelerStudio {
         const data = {
             objects: this.objects.map(o => ({
                 name: o.name, position: o.position.toArray(), rotation: o.rotation.toArray(), scale: o.scale.toArray(),
-                material: o.material ? { color: o.material.color.getHex() } : null
+                material: o.material ? { color: safeGetColor(o.material.color) } : null
             }))
         };
         const a = document.createElement('a');

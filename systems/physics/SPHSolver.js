@@ -54,11 +54,12 @@ const H2 = H * H;
 /** Default spacing between particles when initializing a cube. */
 const DEFAULT_SPACING = H * 0.65;
 
-// ── Container boundary ──
+// ── Default Container boundary (used as initial values) ──
 
-const CONTAINER_MIN = -0.5;
-const CONTAINER_MAX = 0.5;
-const CONTAINER_HEIGHT = 0.6;
+const DEFAULT_CONTAINER_MIN = -0.5;
+const DEFAULT_CONTAINER_MAX = 0.5;
+const DEFAULT_CONTAINER_HEIGHT = 0.6;
+const DEFAULT_CONTAINER_FLOOR = -0.3;
 
 export class SPHSolver {
   /**
@@ -90,6 +91,17 @@ export class SPHSolver {
     // ── Spatial index ──
     /** @type {SPHNeighborhood} */
     this.neighborhood = new SPHNeighborhood(H, maxParticles);
+
+    // ── Container boundaries (runtime-configurable via setBounds) ──
+    this.bounds = {
+      minX: DEFAULT_CONTAINER_MIN,
+      maxX: DEFAULT_CONTAINER_MAX,
+      minZ: DEFAULT_CONTAINER_MIN,
+      maxZ: DEFAULT_CONTAINER_MAX,
+      minY: DEFAULT_CONTAINER_FLOOR,
+      maxY: DEFAULT_CONTAINER_HEIGHT,
+      damping: -0.5,  // bounce restitution
+    };
 
     // ── Temporary / scratch ──
     this._scratch = new Float32Array(maxParticles * 3);
@@ -451,13 +463,15 @@ export class SPHSolver {
   // ── Step 7: Container boundaries ──
 
   _enforceBounds() {
-    const minX = CONTAINER_MIN;
-    const maxX = CONTAINER_MAX;
-    const minZ = CONTAINER_MIN;
-    const maxZ = CONTAINER_MAX;
-    const maxY = CONTAINER_HEIGHT;
-    const minY = -0.3;
-    const damping = -0.5; // bounce restitution
+    // Cache bounds into local variables for hot-loop performance
+    const b = this.bounds;
+    const minX = b.minX;
+    const maxX = b.maxX;
+    const minZ = b.minZ;
+    const maxZ = b.maxZ;
+    const minY = b.minY;
+    const maxY = b.maxY;
+    const damping = b.damping;
 
     for (let i = 0; i < this.activeCount; i++) {
       const i3 = i * 3;
@@ -509,9 +523,24 @@ export class SPHSolver {
    * @param {number} max
    * @param {number} [height]
    */
-  setBounds(min, max, height = CONTAINER_HEIGHT) {
-    // These are used in _enforceBounds — store as module-level or update constants
-    // For now the constants are used directly; this method is a placeholder.
-    console.log(`[SPHSolver] Bounds set: ${min}–${max}, height ${height}`);
+  /**
+   * Set container boundaries at runtime.
+   * Particles outside these bounds will be clamped and velocity-damped.
+   *
+   * @param {number} min       - Min X/Z bound (symmetric)
+   * @param {number} max       - Max X/Z bound (symmetric)
+   * @param {number} [height]  - Max Y (ceiling); floor defaults to -0.3
+   * @param {number} [floor]   - Min Y (floor)
+   * @param {number} [damping] - Bounce restitution [-1..0]
+   */
+  setBounds(min, max, height, floor, damping) {
+    this.bounds.minX = min;
+    this.bounds.maxX = max;
+    this.bounds.minZ = min;
+    this.bounds.maxZ = max;
+    if (height !== undefined) this.bounds.maxY = height;
+    if (floor !== undefined) this.bounds.minY = floor;
+    if (damping !== undefined) this.bounds.damping = Math.min(0, Math.max(-1, damping));
+    console.log(`[SPHSolver] Bounds set: ${min}–${max}, Y: ${this.bounds.minY}–${this.bounds.maxY}, damping: ${this.bounds.damping}`);
   }
 }

@@ -18,6 +18,10 @@ desktop.ini
 *.bak
 *.orig
 
+# npm
+node_modules/
+package-lock.json
+
 # Local env / secrets
 .env
 .env.local

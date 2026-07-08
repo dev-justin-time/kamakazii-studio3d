@@ -8,9 +8,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+import { safeGetColor, safeGetColorHexStr, safeCopyColor } from './material-helpers.js';
 
 // ── Log helper ──
 const log = (msg, type = 'info') => {
@@ -1145,9 +1151,9 @@ export class Studio {
       name: obj.name || 'unnamed',
       type: obj.type,
       uuid: obj.uuid,
-      position: obj.position.toArray().map(v => v.toFixed(3)),
-      rotation: obj.rotation.toArray().map(v => v.toFixed(3)),
-      scale: obj.scale.toArray().map(v => v.toFixed(3)),
+      position: obj.position.toArray().map(v => Number(v).toFixed(3)),
+      rotation: obj.rotation.toArray().map(v => Number(v).toFixed(3)),
+      scale: obj.scale.toArray().map(v => Number(v).toFixed(3)),
     };
     if (obj.isMesh && obj.geometry) {
       const geo = obj.geometry;
@@ -1160,7 +1166,7 @@ export class Studio {
     if (obj.material) {
       info.material = {
         type: obj.material.type,
-        color: '#' + obj.material.color.getHexString(),
+        color: '#' + safeGetColorHexStr(obj.material.color),
         metalness: obj.material.metalness,
         roughness: obj.material.roughness,
         wireframe: !!obj.material.wireframe,
@@ -1249,7 +1255,12 @@ export class Studio {
     if (source instanceof File) {
       const ext = source.name.toLowerCase().split('.').pop();
       if (ext === 'gltf' || ext === 'glb') return this._importGLTF(source);
-      log(`Unsupported: .${ext}`, 'error');
+      if (ext === 'obj') return this._importOBJ(source);
+      if (ext === 'stl') return this._importSTL(source);
+      if (ext === 'ply') return this._importPLY(source);
+      if (ext === 'fbx') return this._importFBX(source);
+      if (ext === 'dae') return this._importCollada(source);
+      log(`Unsupported format: .${ext}. Supported: gltf, glb, obj, stl, ply, fbx, dae`, 'error');
       return;
     }
     // Single URL string
@@ -1332,12 +1343,147 @@ export class Studio {
     });
   }
 
+  // ── OBJ Import ──
+  _importOBJ(file) {
+    return new Promise((resolve, reject) => {
+      const loader = new OBJLoader();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const result = loader.parse(e.target.result);
+          this._finalizeImport(result, file.name);
+          resolve(result);
+        } catch (err) {
+          log(`OBJ import failed: ${err.message}`, 'error');
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  // ── STL Import ──
+  _importSTL(file) {
+    return new Promise((resolve, reject) => {
+      const loader = new STLLoader();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const geometry = loader.parse(e.target.result);
+          const material = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.1 });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          const group = new THREE.Group();
+          group.add(mesh);
+          this._finalizeImport(group, file.name);
+          resolve(group);
+        } catch (err) {
+          log(`STL import failed: ${err.message}`, 'error');
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ── PLY Import ──
+  _importPLY(file) {
+    return new Promise((resolve, reject) => {
+      const loader = new PLYLoader();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const geometry = loader.parse(e.target.result);
+          const material = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.1 });
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          // PLY files may contain vertex colors
+          if (geometry.attributes.color) {
+            material.vertexColors = true;
+            material.needsUpdate = true;
+          }
+          const group = new THREE.Group();
+          group.add(mesh);
+          this._finalizeImport(group, file.name);
+          resolve(group);
+        } catch (err) {
+          log(`PLY import failed: ${err.message}`, 'error');
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ── FBX Import ──
+  _importFBX(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const loader = new FBXLoader();
+          const result = loader.parse(e.target.result, '');
+          this._finalizeImport(result, file.name, { animations: result.animations || [] });
+          resolve(result);
+        } catch (err) {
+          log(`FBX import failed: ${err.message}`, 'error');
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // ── Collada (.dae) Import ──
+  _importCollada(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const loader = new ColladaLoader();
+          const result = loader.parse(e.target.result, '');
+          const root = result.scene || new THREE.Group();
+          this._finalizeImport(root, file.name, { animations: result.animations || [] });
+          resolve(root);
+        } catch (err) {
+          log(`Collada import failed: ${err.message}`, 'error');
+          reject(err);
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+
+
+  /** Shared post-import: shadow, name, rigging detection, select, frame, undo */
+  _finalizeImport(root, fileName, extra) {
+    root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+    root.name = fileName.replace(/\.[^/.]+$/, '');
+    this._detectRiggingAndAnimations(root, extra || { animations: [] });
+    this.scene.add(root);
+    this.objects.push(root);
+    this.selectObject(root);
+    this.frameSelected();
+    this.pushUndo();
+    log(`Imported ${fileName}`);
+  }
+
+  // ── Export with baked textures (GLB with embedded textures) ──
   exportModel(format) {
     const obj = this.selectedObject || this.scene;
     if (format === 'glb') this._exportGLTF(obj, true);
     else if (format === 'gltf') this._exportGLTF(obj, false);
     else if (format === 'obj') this._exportOBJ(obj);
     else if (format === 'stl') this._exportSTL(obj);
+    else if (format === 'glb-textured') this._exportGLTFTextured(obj);
   }
 
   _exportGLTF(object, binary) {
@@ -1372,6 +1518,109 @@ export class Studio {
     log('Exported STL');
   }
 
+  /** Export as GLB with all textures baked/embedded. Bakes vertex colors
+   *  into a texture map so formats without vertex-color support still carry
+   *  the painted appearance. */
+  _exportGLTFTextured(object) {
+    // Step 1: bake vertex colors into texture maps for meshes that have them
+    const bakedMeshes = [];
+    object.traverse((child) => {
+      if (!child.isMesh || !child.geometry) return;
+      const geo = child.geometry;
+      if (!geo.attributes.color || !geo.attributes.uv) return;
+
+      // Create a canvas to bake vertex colors
+      const size = 512;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+
+      const colorAttr = geo.attributes.color;
+      const uvAttr = geo.attributes.uv;
+      const index = geo.index;
+
+      // Rasterize vertex colors per triangle
+      const vA = new THREE.Vector2(), vB = new THREE.Vector2(), vC = new THREE.Vector2();
+      const cA = new THREE.Color(), cB = new THREE.Color(), cC = new THREE.Color();
+      const triCount = index ? index.count / 3 : uvAttr.count / 3;
+
+      for (let i = 0; i < triCount; i++) {
+        const i0 = index ? index.getX(i * 3) : i * 3;
+        const i1 = index ? index.getX(i * 3 + 1) : i * 3 + 1;
+        const i2 = index ? index.getX(i * 3 + 2) : i * 3 + 2;
+
+        vA.set(uvAttr.getX(i0), uvAttr.getY(i0));
+        vB.set(uvAttr.getX(i1), uvAttr.getY(i1));
+        vC.set(uvAttr.getX(i2), uvAttr.getY(i2));
+
+        cA.setRGB(colorAttr.getX(i0), colorAttr.getY(i0), colorAttr.getZ(i0));
+        cB.setRGB(colorAttr.getX(i1), colorAttr.getY(i1), colorAttr.getZ(i1));
+        cC.setRGB(colorAttr.getX(i2), colorAttr.getY(i2), colorAttr.getZ(i2));
+
+        // Draw filled triangle on canvas
+        const ax = vA.x * size, ay = (1 - vA.y) * size;
+        const bx = vB.x * size, by = (1 - vB.y) * size;
+        const cx = vC.x * size, cy = (1 - vC.y) * size;
+
+        // Use average color for the triangle (simpler than per-pixel interpolation)
+        const avgR = Math.round((cA.r + cB.r + cC.r) / 3 * 255);
+        const avgG = Math.round((cA.g + cB.g + cC.g) / 3 * 255);
+        const avgB = Math.round((cA.b + cB.b + cC.b) / 3 * 255);
+
+        ctx.fillStyle = `rgb(${avgR},${avgG},${avgB})`;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(bx, by);
+        ctx.lineTo(cx, cy);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Create texture from canvas
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.flipY = false;
+      texture.colorSpace = THREE.SRGBColorSpace;
+
+      // Clone material and apply baked texture
+      const origMat = child.material;
+      const bakedMat = origMat.clone();
+      bakedMat.map = texture;
+      bakedMat.vertexColors = false;
+      bakedMat.needsUpdate = true;
+
+      // Store original material for restoration after export
+      bakedMeshes.push({ mesh: child, origMaterial: origMat, origVertexColors: true });
+      child.material = bakedMat;
+    });
+
+    // Shared restore helper to avoid duplication
+    const restoreMaterials = () => {
+      bakedMeshes.forEach(({ mesh, origMaterial, origVertexColors }) => {
+        mesh.material = origMaterial;
+        mesh.material.vertexColors = origVertexColors;
+        mesh.material.needsUpdate = true;
+      });
+    };
+
+    // Step 2: Export as GLB (embeds all textures)
+    const exporter = new GLTFExporter();
+    exporter.parse(object, (result) => {
+      const blob = new Blob([result], { type: 'model/gltf-binary' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'export-textured.glb';
+      a.click();
+      log('Exported textured GLB');
+      restoreMaterials();
+    }, (err) => {
+      log(`Textured export failed: ${err.message}`, 'error');
+      restoreMaterials();
+    }, { binary: true, onlyVisible: true });
+  }
+
   // ── Undo / Redo ──
   _captureState() {
     return {
@@ -1384,11 +1633,11 @@ export class Studio {
         rotation: obj.rotation.toArray(),
         scale: obj.scale.toArray(),
         material: obj.material ? {
-          color: obj.material.color.getHex(),
-          metalness: obj.material.metalness,
-          roughness: obj.material.roughness,
-          transparent: obj.material.transparent,
-          opacity: obj.material.opacity,
+          color: safeGetColor(obj.material.color),
+          metalness: obj.material.metalness ?? 0,
+          roughness: obj.material.roughness ?? 0.5,
+          transparent: !!obj.material.transparent,
+          opacity: obj.material.opacity ?? 1,
         } : null,
         geometryType: obj.geometry ? obj.geometry.type : null,
         castShadow: !!obj.castShadow,
@@ -1950,8 +2199,8 @@ export class Studio {
     }
 
     // ── Carve streets: pre-block cells in a regular grid pattern ──
-    const interval = params.streetInterval || 0;
-    const sw = Math.max(1, Math.round(params.streetWidth || 1));
+    const interval = this._valleyParams.streetInterval || 0;
+    const sw = Math.max(1, Math.round(this._valleyParams.streetWidth || 1));
     if (interval > 0) {
       // Corrected modulo for negative numbers (JS % preserves sign)
       const mod = (n, m) => ((n % m) + m) % m;
@@ -2001,7 +2250,7 @@ export class Studio {
       const bh = 0.3 + Math.random() * 3.5;
 
       // ── Collision check: skip if footprint (+ gap) overlaps an existing building ──
-      const gap = params.buildingGap || 0;
+      const gap = this._valleyParams.buildingGap || 0;
       if (isCellBlocked(localPoint.x, localPoint.z, bw + gap, bd + gap)) {
         continue;
       }
@@ -2046,7 +2295,7 @@ export class Studio {
     if (!p) return;
     const mat = new THREE.MeshStandardMaterial(p);
     if (this.selectedObject.material) {
-      mat.color.copy(this.selectedObject.material.color);
+      safeCopyColor(this.selectedObject.material.color, mat.color);
       Object.assign(mat, p);
     }
     this.selectedObject.material = mat;
@@ -2061,7 +2310,7 @@ export class Studio {
         position: o.position.toArray(),
         rotation: o.rotation.toArray(),
         scale: o.scale.toArray(),
-        color: o.material?.color?.getHex() || 0xcccccc,
+        color: safeGetColor(o.material?.color),
       }))
     };
     const a = document.createElement('a');

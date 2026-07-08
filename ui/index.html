@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com https://esm.sh 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://www.gstatic.com; connect-src 'self' https://esm.sh https://unpkg.com; worker-src 'self' blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -9,7 +10,9 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" type="image/svg+xml" href="../assets/icons/icon.svg">
   <link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
   <link rel="stylesheet" href="../marketplace/marketplace.css">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -117,26 +120,21 @@
   <input id="modelImport" type="file" accept=".gltf,.glb,.obj,.stl,.bin,.png,.jpg,.jpeg,.webp,.hdr,.ktx2,.k3dasset" multiple style="display:none" />
   <input id="projectOpen" type="file" accept=".json" style="display:none" />
 
-  <!-- Boot error banner -->
-  <script>
-    (function(){
-      window.addEventListener('error', function(e) {
-        var el = document.getElementById('bootErrorBanner');
-        if (!el) {
-          el = document.createElement('div');
-          el.id = 'bootErrorBanner';
-          el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#300;color:#f88;font:12px/1.4 monospace;padding:8px 12px;border-bottom:1px solid #a00;white-space:pre-wrap';
-          document.body.appendChild(el);
-        }
-        el.textContent = '[Boot Error] ' + (e.message || 'Unknown error') + (e.filename ? ' at ' + e.filename + ':' + e.lineno : '');
-      }, true);
-      window.addEventListener('unhandledrejection', function(e) {
-        var el = document.getElementById('bootErrorBanner') || (function(){
-          var d=document.createElement('div');d.id='bootErrorBanner';d.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;background:#300;color:#f88;font:12px/1.4 monospace;padding:8px 12px;border-bottom:1px solid #a00;white-space:pre-wrap';document.body.appendChild(d);return d;
-        })();
-        el.textContent = '[Unhandled Rejection] ' + (e.reason?.message || String(e.reason || ''));
-      });
-    })();
+  <!-- Boot error banner + ClientErrorLogger -->
+  <script type="module">
+    import { ClientErrorLogger } from '../app/error-logger.js';
+    ClientErrorLogger.install();
+    // Keep the boot error banner for visible feedback during init
+    window.addEventListener('error', function(e) {
+      var el = document.getElementById('bootErrorBanner');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'bootErrorBanner';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#300;color:#f88;font:12px/1.4 monospace;padding:8px 12px;border-bottom:1px solid #a00;white-space:pre-wrap';
+        document.body.appendChild(el);
+      }
+      el.textContent = '[Boot Error] ' + (e.message || 'Unknown error') + (e.filename ? ' at ' + e.filename + ':' + e.lineno : '');
+    }, true);
   </script>
 
   <script type="importmap">
@@ -147,7 +145,8 @@
         "dat.gui": "https://unpkg.com/dat.gui@0.7.9/build/dat.gui.module.js",
         "nipplejs": "https://esm.sh/nipplejs@0.9.1",
         "cannon-es": "https://esm.sh/cannon-es@0.20.0",
-        "jszip": "https://esm.sh/jszip@3.10.1"
+        "jszip": "https://esm.sh/jszip@3.10.1",
+        "fflate": "https://esm.sh/fflate@0.8.2"
       }
     }
   </script>

@@ -25,7 +25,21 @@ export class ModelEditor {
     this.objects = [];
     this.animations = [];
     this.mixer = null;
-    this.selectedObject = null;
+
+    // Multi-select support
+    this.selectedObject = null;        // primary selection (backward compat)
+    this.selectedObjects = new Set();  // all selected objects
+    this._selectionListeners = [];     // callbacks for selection changes
+
+    // Per-frame hook registry
+    this._frameHooks = new Set();      // Set<fn(delta)>
+
+    // Undo grouping
+    this._undoGroupDepth = 0;
+    this._undoGroupCommands = [];
+    this.undoStack = [];
+    this.redoStack = [];
+    this.maxUndoSize = 50;
   }
 
   // Basic import for ArrayBuffer/File/url - uses GLTF loader when possible
@@ -198,15 +212,43 @@ export class ModelEditor {
     }
   }
 
-  // New: update method used by animation loop (advance mixer & provide hook)
+  // ── Per-frame editor hook system ──
+
+  /**
+   * Register a per-frame callback. Called every animation frame with (delta).
+   * @param {function} fn - callback(delta: number)
+   */
+  registerFrameHook(fn) {
+    if (typeof fn === 'function') this._frameHooks.add(fn);
+  }
+
+  /**
+   * Unregister a previously registered per-frame callback.
+   */
+  unregisterFrameHook(fn) {
+    this._frameHooks.delete(fn);
+  }
+
+  /**
+   * Update method called every frame by the animation loop.
+   * Advances the animation mixer and fires all registered frame hooks.
+   */
   update(delta) {
     try {
+      // Advance animation mixer
       if (this.mixer && typeof this.mixer.update === 'function') {
         this.mixer.update(delta);
       }
-      // Placeholder for future per-frame editor updates (animations, plugins, etc.)
+
+      // Fire all registered frame hooks (Set iteration is safe for concurrent delete)
+      for (const hook of this._frameHooks) {
+        try {
+          hook(delta);
+        } catch (hookErr) {
+          console.warn('Frame hook error:', hookErr);
+        }
+      }
     } catch (e) {
-      // Swallow to avoid breaking the main loop
       console.warn('ModelEditor.update error:', e);
     }
   }
@@ -249,8 +291,234 @@ export class ModelEditor {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  // Stubbed selection API used by other modules
-  selectObject(obj) { this.selectedObject = obj; }
-  deleteSelectedObject() { if (this.selectedObject && this.selectedObject.parent) this.selectedObject.parent.remove(this.selectedObject); this.selectedObject = null; }
-  duplicateSelectedObject() { if (!this.selectedObject) return null; const c = this.selectedObject.clone(); this.scene.add(c); this.objects.push(c); this.selectObject(c); return c; }
+  // ── Selection API ──
+
+  /**
+   * Select a single object (clears multi-select).
+   * @param {THREE.Object3D|null} obj
+   * @param {boolean} [addToGroup=false] - If true, add to multi-select set without clearing.
+   */
+  selectObject(obj, addToGroup = false) {
+    if (!addToGroup) {
+      // Clear previous multi-selection highlights
+      for (const prev of this.selectedObjects) {
+        this._removeSelectionHighlight(prev);
+      }
+      this.selectedObjects.clear();
+    }
+
+    this.selectedObject = obj;
+
+    if (obj) {
+      this.selectedObjects.add(obj);
+      this._addSelectionHighlight(obj);
+    }
+
+    // Notify listeners
+    this._fireSelectionChange();
+  }
+
+  /**
+   * Toggle an object in/out of the multi-select group.
+   */
+  toggleSelectObject(obj) {
+    if (!obj) return;
+    if (this.selectedObjects.has(obj)) {
+      this.selectedObjects.delete(obj);
+      this._removeSelectionHighlight(obj);
+      if (this.selectedObject === obj) {
+        this.selectedObject = this.selectedObjects.values().next().value || null;
+      }
+    } else {
+      this.selectedObjects.add(obj);
+      this._addSelectionHighlight(obj);
+      this.selectedObject = obj;
+    }
+    this._fireSelectionChange();
+  }
+
+  /**
+   * Register a callback for selection changes.
+   * @param {function} fn - callback({ selected, selectedObjects })
+   */
+  onSelectionChange(fn) {
+    if (typeof fn === 'function') this._selectionListeners.push(fn);
+  }
+
+  _fireSelectionChange() {
+    const data = {
+      selected: this.selectedObject,
+      selectedObjects: new Set(this.selectedObjects)
+    };
+    for (const fn of this._selectionListeners) {
+      try { fn(data); } catch (e) { console.warn('Selection listener error:', e); }
+    }
+  }
+
+  _addSelectionHighlight(obj) {
+    if (!obj || obj.getObjectByName('__sel_highlight')) return;
+    if (obj.isMesh && obj.geometry) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0x4a9eff, side: THREE.BackSide, depthTest: false });
+      const outline = new THREE.Mesh(obj.geometry, mat);
+      outline.scale.copy(obj.scale).multiplyScalar(1.04);
+      outline.name = '__sel_highlight';
+      outline.renderOrder = 999;
+      obj.add(outline);
+    }
+  }
+
+  _removeSelectionHighlight(obj) {
+    if (!obj) return;
+    const highlight = obj.getObjectByName('__sel_highlight');
+    if (highlight) {
+      obj.remove(highlight);
+      if (highlight.geometry) highlight.geometry.dispose();
+      if (highlight.material) highlight.material.dispose();
+    }
+  }
+
+  /**
+   * Get all selected objects as an array.
+   */
+  getSelectedObjects() {
+    return Array.from(this.selectedObjects);
+  }
+
+  /**
+   * Get the center point of all selected objects (for multi-gizmo placement).
+   */
+  getSelectionCenter() {
+    if (this.selectedObjects.size === 0) return new THREE.Vector3();
+    const center = new THREE.Vector3();
+    for (const obj of this.selectedObjects) {
+      center.add(obj.position);
+    }
+    return center.divideScalar(this.selectedObjects.size);
+  }
+
+  // ── Undo Grouping (Batch Commands) ──
+
+  /**
+   * Begin an undo group. All pushUndo calls inside the group are batched
+   * into a single undo/redo entry.
+   */
+  beginUndoGroup() {
+    this._undoGroupDepth++;
+  }
+
+  /**
+   * End an undo group. If depth returns to 0, the batch is committed.
+   */
+  endUndoGroup() {
+    this._undoGroupDepth = Math.max(0, this._undoGroupDepth - 1);
+    if (this._undoGroupDepth === 0 && this._undoGroupCommands.length > 0) {
+      // Commit the batch as a single undo entry
+      const batch = {
+        type: 'batch',
+        commands: [...this._undoGroupCommands],
+        timestamp: Date.now()
+      };
+      this.undoStack.push(batch);
+      if (this.undoStack.length > this.maxUndoSize) this.undoStack.shift();
+      this.redoStack = [];
+      this._undoGroupCommands = [];
+    }
+  }
+
+  /**
+   * Push an undo command. If inside an undo group, defers to the group.
+   * @param {Object} command - { execute(), undo() } or any serializable state snapshot
+   */
+  pushUndo(command) {
+    if (this._undoGroupDepth > 0) {
+      this._undoGroupCommands.push(command);
+      return;
+    }
+    this.undoStack.push(command);
+    if (this.undoStack.length > this.maxUndoSize) this.undoStack.shift();
+    this.redoStack = [];
+  }
+
+  undo() {
+    if (this.undoStack.length === 0) return;
+    const entry = this.undoStack.pop();
+    this.redoStack.push(entry);
+    if (entry.type === 'batch') {
+      // Undo batch in reverse order
+      for (let i = entry.commands.length - 1; i >= 0; i--) {
+        if (entry.commands[i].undo) entry.commands[i].undo();
+      }
+    } else if (entry.undo) {
+      entry.undo();
+    }
+  }
+
+  redo() {
+    if (this.redoStack.length === 0) return;
+    const entry = this.redoStack.pop();
+    this.undoStack.push(entry);
+    if (entry.type === 'batch') {
+      for (const cmd of entry.commands) {
+        if (cmd.execute) cmd.execute();
+      }
+    } else if (entry.execute) {
+      entry.execute();
+    }
+  }
+
+  // ── Delete / Duplicate (upgraded for multi-select) ──
+
+  deleteSelectedObject() {
+    const toDelete = this.selectedObjects.size > 0
+      ? Array.from(this.selectedObjects)
+      : (this.selectedObject ? [this.selectedObject] : []);
+
+    if (toDelete.length === 0) return;
+
+    this.beginUndoGroup();
+    for (const obj of toDelete) {
+      this.pushUndo({
+        execute: () => { if (obj.parent) obj.parent.remove(obj); },
+        undo: () => { this.scene.add(obj); }
+      });
+      if (obj.parent) obj.parent.remove(obj);
+      this._removeSelectionHighlight(obj);
+    }
+    this.endUndoGroup();
+
+    this.selectedObjects.clear();
+    this.selectedObject = null;
+    this._fireSelectionChange();
+  }
+
+  duplicateSelectedObject() {
+    const toDuplicate = this.selectedObjects.size > 0
+      ? Array.from(this.selectedObjects)
+      : (this.selectedObject ? [this.selectedObject] : []);
+
+    if (toDuplicate.length === 0) return null;
+
+    const clones = [];
+    this.beginUndoGroup();
+    for (const obj of toDuplicate) {
+      const c = obj.clone();
+      c.position.x += 1;
+      this.scene.add(c);
+      this.objects.push(c);
+      clones.push(c);
+      this.pushUndo({
+        execute: () => { this.scene.add(c); },
+        undo: () => { this.scene.remove(c); }
+      });
+    }
+    this.endUndoGroup();
+
+    // Select the clones
+    this.selectObject(clones[0]);
+    for (let i = 1; i < clones.length; i++) {
+      this.toggleSelectObject(clones[i]);
+    }
+
+    return clones.length === 1 ? clones[0] : clones;
+  }
 }

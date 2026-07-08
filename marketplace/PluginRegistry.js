@@ -49,18 +49,38 @@ export class PluginRegistry {
   _registerBuiltIn() {
     this._addBuiltIn('auto-retopology', {
       name: 'Auto-Retopology',
-      version: '1.0.0',
+      version: '2.0.0',
       author: 'Kamakazii Studio',
-      description: 'Automated mesh retopology via WebAssembly solver',
+      description: 'Automated mesh retopology via Quadric Error Metrics (QEM) edge-collapse simplification',
       icon: 'fa-magic',
       price: 'Free',
       category: 'mesh',
       minEditorVersion: '1.0.0',
       hooks: {},
-      execute: () => {
-        console.log('[Auto-Retopology] Stub — real WASM solver pending');
-        if (this.editor && this.editor.ui) {
-          this.editor.ui.log('Auto-Retopology: WASM solver not yet integrated', 'warning');
+      execute: async () => {
+        const editor = this.editor;
+        const sel = editor?.selectedObject || editor?.selection;
+        if (!sel || !sel.isMesh || !sel.geometry) {
+          editor?.ui?.log('Auto-Retopology: Select a mesh first', 'warning');
+          return;
+        }
+        try {
+          const { simplifyGeometry } = await import('./plugins/AutoRetopology.js');
+          const targetRatio = parseFloat(prompt('Reduction ratio (0.1 = 10% of original, 0.5 = 50%):', '0.5')) || 0.5;
+          editor.ui?.log(`Auto-Retopology: Simplifying ${sel.geometry.index?.count ?? sel.geometry.attributes.position.count} faces to ${Math.round(targetRatio * 100)}%...`, 'info');
+          const result = simplifyGeometry(sel.geometry, {
+            ratio: Math.max(0.05, Math.min(1.0, targetRatio)),
+            progress: (current, target) => {
+              if (current % 500 === 0) editor.ui?.log(`  ...${current} faces remaining`, 'info');
+            }
+          });
+          // Replace geometry
+          sel.geometry.dispose();
+          sel.geometry = result.geometry;
+          editor.ui?.log(`Auto-Retopology: Done! ${result.resultFaces} faces (collapsed ${result.collapsed} edges)`, 'success');
+        } catch(e) {
+          console.error('[Auto-Retopology]', e);
+          editor?.ui?.log(`Auto-Retopology failed: ${e.message}`, 'error');
         }
       }
     });
@@ -88,16 +108,69 @@ export class PluginRegistry {
 
     this._addBuiltIn('voxel-engine', {
       name: 'Voxel Engine',
-      version: '1.0.0',
+      version: '2.0.0',
       author: 'Kamakazii Studio',
-      description: 'Sparse octree voxel editor with boolean CSG operations',
+      description: 'Sparse octree voxel editor with boolean CSG operations and marching cubes',
       icon: 'fa-cubes',
       price: 'Free',
       category: 'modeling',
       minEditorVersion: '1.0.0',
       hooks: {},
-      execute: () => {
-        console.log('[Voxel Engine] Stub — sparse octree integration pending');
+      execute: async () => {
+        const editor = this.editor;
+        try {
+          const { VoxelEngine } = await import('./plugins/VoxelEngine.js');
+          const resolution = parseInt(prompt('Voxel grid resolution (32, 64, 128):', '64'), 10) || 64;
+          const clampedRes = Math.max(8, Math.min(256, resolution));
+          const voxEngine = new VoxelEngine({ resolution: clampedRes, worldSize: 10 });
+
+          // Voxelize selected mesh if present
+          const sel = editor?.selectedObject || editor?.selection;
+          if (sel?.isMesh && sel.geometry) {
+            editor.ui?.log(`Voxel Engine: Voxelizing at ${clampedRes}³ resolution...`, 'info');
+            voxEngine.voxelizeMesh(sel);
+            const stats = voxEngine.getStats();
+            editor.ui?.log(`Voxel Engine: ${stats.filledVoxels} voxels filled`, 'info');
+
+            // Extract mesh via marching cubes
+            const smoothed = voxEngine.marchingCubes(0.5);
+            if (smoothed.attributes.position?.count > 0) {
+              const THREE = await import('three');
+              const mat = new THREE.MeshStandardMaterial({ color: 0x66ccff, roughness: 0.4, metalness: 0.1 });
+              const mesh = new THREE.Mesh(smoothed, mat);
+              mesh.name = `Voxel_${clampedRes}`;
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              editor.scene?.add(mesh);
+              (editor.objects || []).push(mesh);
+              editor.ui?.log(`Voxel Engine: Generated mesh with ${smoothed.attributes.position.count} vertices`, 'success');
+            } else {
+              // Fallback: blocky mesh
+              const blockMesh = voxEngine.toBlockMesh();
+              if (blockMesh.attributes.position?.count > 0) {
+                const THREE = await import('three');
+                const mat = new THREE.MeshStandardMaterial({ color: 0x66ccff, roughness: 0.4, metalness: 0.1 });
+                const mesh = new THREE.Mesh(blockMesh, mat);
+                mesh.name = `Voxel_Block_${clampedRes}`;
+                mesh.castShadow = true;
+                editor.scene?.add(mesh);
+                (editor.objects || []).push(mesh);
+                editor.ui?.log(`Voxel Engine: Generated block mesh`, 'success');
+              }
+            }
+
+            // Store engine on editor for CSG operations
+            editor._voxelEngine = voxEngine;
+            editor.ui?.log('Voxel Engine: Use editor._voxelEngine.csgUnion/csgIntersection/csgDifference(otherEngine) for CSG', 'info');
+          } else {
+            // No mesh selected — create empty voxel grid and store it
+            editor._voxelEngine = voxEngine;
+            editor.ui?.log(`Voxel Engine: Created empty ${clampedRes}³ grid. Use editor._voxelEngine.sphereBrush/boxBrush to sculpt.`, 'info');
+          }
+        } catch(e) {
+          console.error('[Voxel Engine]', e);
+          editor?.ui?.log(`Voxel Engine failed: ${e.message}`, 'error');
+        }
       }
     });
   }
@@ -395,21 +468,115 @@ export class PluginRegistry {
     return false;
   }
 
-  /* ── Marketplace Fetch (Stub — replace with real API) ── */
+  /* ── Marketplace Fetch (IndexedDB-backed with network fetch) ── */
+
+  /**
+   * Open the plugin manifest IndexedDB cache.
+   * @returns {Promise<IDBDatabase|null>}
+   */
+  async _openManifestDB() {
+    if (this._manifestDB) return this._manifestDB;
+    if (typeof indexedDB === 'undefined') return null;
+    return new Promise((resolve) => {
+      const req = indexedDB.open('KamakaziiPluginStore', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('manifests')) {
+          db.createObjectStore('manifests', { keyPath: 'id' });
+        }
+      };
+      req.onsuccess = (e) => {
+        this._manifestDB = e.target.result;
+        resolve(this._manifestDB);
+      };
+      req.onerror = () => resolve(null);
+    });
+  }
+
+  /**
+   * Read a cached manifest from IndexedDB.
+   */
+  async _getCachedManifest(storeId) {
+    const db = await this._openManifestDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction('manifests', 'readonly');
+        const store = tx.objectStore('manifests');
+        const req = store.get(storeId);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+      } catch { resolve(null); }
+    });
+  }
+
+  /**
+   * Write a manifest to the IndexedDB cache.
+   */
+  async _setCachedManifest(storeId, manifest) {
+    const db = await this._openManifestDB();
+    if (!db) return;
+    try {
+      const tx = db.transaction('manifests', 'readwrite');
+      const store = tx.objectStore('manifests');
+      store.put({ ...manifest, id: storeId, _cachedAt: Date.now() });
+    } catch { /* quota exceeded or other IDB error — fail silently */ }
+  }
 
   /**
    * Fetch a plugin manifest from the marketplace by store ID.
+   * Uses IndexedDB cache with network fetch fallback.
    * Public — called by marketplace-ui and other modules.
    */
   async fetchManifest(storeId) {
-    // In production, this would call the marketplace API
-    // For now, return from cache or simulate
+    // 1. Check in-memory cache
     if (this.manifestCache.has(storeId)) {
       return this.manifestCache.get(storeId);
     }
 
-    // Simulated remote plugin catalog
-    const catalog = {
+    // 2. Check IndexedDB cache
+    const cached = await this._getCachedManifest(storeId);
+    if (cached) {
+      this.manifestCache.set(storeId, cached);
+      return cached;
+    }
+
+    // 3. Network fetch (real API endpoint)
+    try {
+      const API_BASE = window.KAMAKAZII_MARKETPLACE_API || 'https://api.kamakazii.com/v1/marketplace';
+      const resp = await fetch(`${API_BASE}/plugins/${encodeURIComponent(storeId)}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (resp.ok) {
+        const manifest = await resp.json();
+        if (manifest && manifest.id && manifest.name) {
+          this.manifestCache.set(storeId, manifest);
+          await this._setCachedManifest(storeId, manifest);
+          return manifest;
+        }
+      }
+    } catch (err) {
+      // Network unavailable — fall through to local catalog
+      console.info(`[PluginRegistry] Network fetch failed for "${storeId}", using local catalog:`, err.message);
+    }
+
+    // 4. Fallback to bundled local catalog (offline-first)
+    const catalog = this._getLocalCatalog();
+    const manifest = catalog[storeId] || null;
+    if (manifest) {
+      this.manifestCache.set(storeId, manifest);
+      await this._setCachedManifest(storeId, manifest);
+    }
+    return manifest;
+  }
+
+  /**
+   * Bundled local catalog for offline-first fallback.
+   * @returns {Object} Map of storeId -> manifest
+   */
+  _getLocalCatalog() {
+    return {
       'pro-brush-pack': {
         id: 'pro-brush-pack',
         name: 'Pro Brush Pack',
@@ -420,11 +587,7 @@ export class PluginRegistry {
         price: '$14.99',
         category: 'sculpting',
         minEditorVersion: '1.0.0',
-        hooks: {
-          onSculptStroke: (data) => {
-            // Enhanced brush logic would go here
-          }
-        },
+        hooks: {},
         dependencies: {}
       },
       'hdri-skybox-collection': {
@@ -450,11 +613,7 @@ export class PluginRegistry {
         price: '$24.99',
         category: 'animation',
         minEditorVersion: '1.0.0',
-        hooks: {
-          onKeyframe: (data) => {
-            // Enhanced keyframe interpolation
-          }
-        },
+        hooks: {},
         dependencies: {}
       },
       'material-mega-pack': {
@@ -467,11 +626,7 @@ export class PluginRegistry {
         price: '$39.99',
         category: 'materials',
         minEditorVersion: '1.0.0',
-        hooks: {
-          onNodeGraphChange: (data) => {
-            // Extended material nodes
-          }
-        },
+        hooks: {},
         dependencies: {}
       },
       'physics-pro': {
@@ -484,11 +639,7 @@ export class PluginRegistry {
         price: '$19.99',
         category: 'physics',
         minEditorVersion: '1.0.0',
-        hooks: {
-          onPhysicsStep: (data) => {
-            // Custom physics integrator
-          }
-        },
+        hooks: {},
         dependencies: {}
       },
       'sync-cloud-pro': {
@@ -501,20 +652,10 @@ export class PluginRegistry {
         price: '$4.99/mo',
         category: 'workflow',
         minEditorVersion: '1.0.0',
-        hooks: {
-          onBeforeRender: (data) => {
-            // Auto-save check
-          }
-        },
+        hooks: {},
         dependencies: {}
       }
     };
-
-    const manifest = catalog[storeId] || null;
-    if (manifest) {
-      this.manifestCache.set(storeId, manifest);
-    }
-    return manifest;
   }
 
   /**

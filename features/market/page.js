@@ -1,6 +1,6 @@
 /**
  * Marketplace page — launches the full MarketplaceUI in an expanded popup.
- * Imports MarketplaceAPI + MarketplaceUI from ../marketplace/ and mounts them.
+ * Imports MarketplaceAPI + MarketplaceUI from ../../marketplace/ and mounts them.
  * Supports Stripe live payments via env vars, URL params, or user input.
  */
 
@@ -36,6 +36,8 @@ function resolveStripeConfig() {
 
 let _currentStripeConfig = resolveStripeConfig();
 let _mounted = false;
+let _marketplaceAPI = null;
+let _marketplaceUI = null;
 
 const meta = {
   controls: [
@@ -65,137 +67,11 @@ const meta = {
 };
 
 async function _launchMarketplace() {
-  if (_mounted) return;
-  _mounted = true;
-
   const popupOverlay = document.getElementById('popupOverlay');
   const popupContent = document.getElementById('popupContent');
   if (!popupOverlay || !popupContent) return;
-
-  // Expand popup to full-screen
   popupContent.style.cssText += 'width:90vw;max-width:1200px;height:85vh;max-height:85vh;overflow-y:hidden;padding:0;';
-
-  // Show loading state
-  popupContent.innerHTML = `
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#666;">
-      <i class="fas fa-store" style="font-size:40px;opacity:0.3"></i>
-      <span>Loading Marketplace...</span>
-    </div>`;
-
-  try {
-    // Dynamically import marketplace modules
-    const [{ MarketplaceAPI }, { MarketplaceUI }] = await Promise.all([
-      import('../marketplace/index.js'),
-      import('../marketplace/marketplace-ui.js'),
-    ]);
-
-    // Create editorState stub for the API
-    const editorState = {
-      ui: {
-        log: (msg, type) => {
-          console.log(`[Market] ${msg}`);
-          if (type === 'error') console.warn(`[Market Error] ${msg}`);
-        },
-      },
-    };
-
-    // Refresh config (in case URL params changed or user set globals)
-    _currentStripeConfig = resolveStripeConfig();
-
-    // Create and initialize the API with Stripe config
-    const api = new MarketplaceAPI(editorState, {
-      publishableKey: _currentStripeConfig.publishableKey,
-      checkoutEndpoint: _currentStripeConfig.checkoutEndpoint,
-      successUrl: _currentStripeConfig.successUrl,
-      cancelUrl: _currentStripeConfig.cancelUrl,
-    });
-
-    // If config has keys, ensure they're applied (redundant but explicit)
-    if (_currentStripeConfig.publishableKey && _currentStripeConfig.checkoutEndpoint) {
-      api.configureStripe({
-        publishableKey: _currentStripeConfig.publishableKey,
-        checkoutEndpoint: _currentStripeConfig.checkoutEndpoint,
-        successUrl: _currentStripeConfig.successUrl,
-        cancelUrl: _currentStripeConfig.cancelUrl,
-      });
-    }
-
-    await api.init();
-
-    // Check final mode
-    const stripeStatus = api.monetization.stripe.getStatus();
-    const isLive = stripeStatus.live;
-
-    // Clear popup and mount the UI
-    popupContent.innerHTML = '';
-
-    // ── Header bar with Stripe status + configure button ──
-    const headerBar = document.createElement('div');
-    headerBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#252526;border-bottom:1px solid #333;flex-shrink:0;';
-
-    headerBar.innerHTML = `
-      <span style="font-weight:600;color:#e0e0e0;display:flex;align-items:center;gap:8px">
-        <i class="fas fa-store" style="color:#60a5fa"></i> Marketplace
-        <span id="stripeStatus" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:400;padding:2px 8px;border-radius:10px;${
-          isLive
-            ? 'background:#4ade8022;color:#4ade80;border:1px solid #4ade8044;'
-            : 'background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;'
-        }">
-          <span style="width:6px;height:6px;border-radius:50%;background:${isLive ? '#4ade80' : '#f59e0b'}"></span>
-          ${isLive ? 'LIVE' : 'SIM'}
-        </span>
-      </span>
-      <div style="display:flex;align-items:center;gap:6px">
-        <button id="stripeConfigBtn" style="background:none;border:1px solid #555;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;" title="Configure Stripe">
-          <i class="fas fa-key"></i> Stripe
-        </button>
-        <button id="marketCloseBtn" style="background:none;border:1px solid #555;color:#aaa;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">✕ Close</button>
-      </div>`;
-
-    // Create container for MarketplaceUI
-    const uiContainer = document.createElement('div');
-    uiContainer.id = 'market-ui-container';
-    uiContainer.style.cssText = 'flex:1;overflow:hidden;position:relative;';
-
-    popupContent.style.display = 'flex';
-    popupContent.style.flexDirection = 'column';
-    popupContent.appendChild(headerBar);
-    popupContent.appendChild(uiContainer);
-
-    // Mount the marketplace UI
-    const marketplaceUI = new MarketplaceUI(api, uiContainer);
-    marketplaceUI.mount();
-
-    // ── Stripe configure button ──
-    const stripeConfigBtn = document.getElementById('stripeConfigBtn');
-    if (stripeConfigBtn) {
-      stripeConfigBtn.addEventListener('click', () => {
-        _showStripeConfigPopup(api);
-      });
-    }
-
-    // ── Close button ──
-    const closeBtn = document.getElementById('marketCloseBtn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        try { marketplaceUI.unmount(); } catch (e) {}
-        _mounted = false;
-        popupContent.style.cssText =
-          'background:#1e1e2e;border-radius:8px;border:1px solid #444;min-width:320px;max-width:500px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
-        popupOverlay.classList.remove('open');
-      });
-    }
-  } catch (err) {
-    console.error('[Market] Failed to mount:', err);
-    popupContent.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:40px;text-align:center;">
-      <i class="fas fa-exclamation-triangle" style="font-size:36px;color:#ef4444"></i>
-      <h3 style="color:#eee;margin:0">Failed to Load Marketplace</h3>
-      <p style="color:#888;font-size:13px">${err.message}</p>
-      <button id="marketRetryBtn" class="btn" style="max-width:200px">Retry</button>
-    </div>`;
-    const retryBtn = document.getElementById('marketRetryBtn');
-    if (retryBtn) retryBtn.addEventListener('click', () => { _mounted = false; _launchMarketplace(); });
-  }
+  await _launchMarketplaceDirect(popupContent, popupOverlay);
 }
 
 /**
@@ -322,7 +198,175 @@ function _showStripeConfigPopup(api) {
   document.getElementById('stripeConfigCancel').addEventListener('click', () => overlay.remove());
 }
 
+/**
+ * Get the active MarketplaceAPI instance (if mounted).
+ * Other modules can import this to check entitlements, search products, etc.
+ */
+export function getMarketplaceAPI() {
+  return _marketplaceAPI;
+}
+
 export { meta };
+
+/**
+ * render() — called by StudioShell._openPopup (shell.js).
+ * Auto-launches the marketplace into the provided container so users
+ * don't need to click a second "Launch" button.
+ */
 export function render(container, state) {
-  container.innerHTML = '';
+  if (_mounted) return;
+
+  // Reuse the same launch logic but target the shell's popup container.
+  // We temporarily point _launchMarketplace at the right DOM nodes.
+  const popupOverlay = container.closest?.('.popup-overlay')
+    || document.getElementById('popupOverlay')
+    || container.parentElement;
+  const popupContent = container;
+
+  // Expand container to near-fullscreen
+  popupContent.style.cssText += 'width:90vw;max-width:1200px;height:85vh;max-height:85vh;overflow-y:hidden;padding:0;';
+  if (popupOverlay?.style) {
+    popupOverlay.style.display = 'flex';
+  }
+
+  _launchMarketplaceDirect(popupContent, popupOverlay);
+}
+
+/**
+ * Direct marketplace launch (no popup dependency).
+ * Shared between the meta.controls button path and the render() path.
+ */
+async function _launchMarketplaceDirect(popupContent, popupOverlay) {
+  if (_mounted) return;
+  _mounted = true;
+
+  // Show loading state
+  popupContent.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#666;">
+      <i class="fas fa-store" style="font-size:40px;opacity:0.3"></i>
+      <span>Loading Marketplace...</span>
+    </div>`;
+
+  try {
+    const [{ MarketplaceAPI }, { MarketplaceUI }] = await Promise.all([
+      import('../../marketplace/index.js'),
+      import('../../marketplace/marketplace-ui.js'),
+    ]);
+
+    const studio = window.ProModelerApp;
+    const editorState = studio || {
+      ui: { log: (msg) => console.log(`[Market] ${msg}`) },
+    };
+
+    _currentStripeConfig = resolveStripeConfig();
+
+    const api = new MarketplaceAPI(editorState, {
+      publishableKey: _currentStripeConfig.publishableKey,
+      checkoutEndpoint: _currentStripeConfig.checkoutEndpoint,
+      successUrl: _currentStripeConfig.successUrl,
+      cancelUrl: _currentStripeConfig.cancelUrl,
+    });
+
+    // Expose the Three.js renderer for thumbnail generation in AssetBundler
+    if (studio?.renderer) {
+      api.renderer = studio.renderer;
+    }
+
+    if (_currentStripeConfig.publishableKey && _currentStripeConfig.checkoutEndpoint) {
+      api.configureStripe(_currentStripeConfig);
+    }
+
+    await api.init();
+
+    const stripeStatus = api.monetization.stripe.getStatus();
+    const isLive = stripeStatus.live;
+
+    popupContent.innerHTML = '';
+
+    // Header bar
+    const headerBar = document.createElement('div');
+    headerBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:#252526;border-bottom:1px solid #333;flex-shrink:0;';
+    headerBar.innerHTML = `
+      <span style="font-weight:600;color:#e0e0e0;display:flex;align-items:center;gap:8px">
+        <i class="fas fa-store" style="color:#60a5fa"></i> Marketplace
+        <span id="stripeStatus" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:400;padding:2px 8px;border-radius:10px;${
+          isLive ? 'background:#4ade8022;color:#4ade80;border:1px solid #4ade8044;' : 'background:#f59e0b22;color:#f59e0b;border:1px solid #f59e0b44;'}">
+          <span style="width:6px;height:6px;border-radius:50%;background:${isLive ? '#4ade80' : '#f59e0b'}"></span>
+          ${isLive ? 'LIVE' : 'SIM'}
+        </span>
+      </span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button id="stripeConfigBtn" style="background:none;border:1px solid #555;color:#aaa;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;" title="Configure Stripe">
+          <i class="fas fa-key"></i> Stripe
+        </button>
+        <button id="marketCloseBtn" style="background:none;border:1px solid #555;color:#aaa;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:13px;">✕ Close</button>
+      </div>`;
+
+    const uiContainer = document.createElement('div');
+    uiContainer.id = 'market-ui-container';
+    uiContainer.style.cssText = 'flex:1;overflow:hidden;position:relative;';
+
+    popupContent.style.display = 'flex';
+    popupContent.style.flexDirection = 'column';
+    popupContent.appendChild(headerBar);
+    popupContent.appendChild(uiContainer);
+
+    const marketplaceUI = new MarketplaceUI(api, uiContainer);
+    marketplaceUI.mount();
+
+    _marketplaceAPI = api;
+    _marketplaceUI = marketplaceUI;
+
+    if (studio) {
+      studio.marketplaceAPI = api;
+      studio.marketplaceUI = marketplaceUI;
+    }
+
+    // Stripe config button
+    document.getElementById('stripeConfigBtn')?.addEventListener('click', () => {
+      _showStripeConfigPopup(api);
+    });
+
+    // Close button
+    document.getElementById('marketCloseBtn')?.addEventListener('click', () => {
+      _closeMarketplace(popupContent, popupOverlay, studio);
+    });
+
+  } catch (err) {
+    console.error('[Market] Failed to mount:', err);
+    _mounted = false;
+    popupContent.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:40px;text-align:center;">
+      <i class="fas fa-exclamation-triangle" style="font-size:36px;color:#ef4444"></i>
+      <h3 style="color:#eee;margin:0">Failed to Load Marketplace</h3>
+      <p style="color:#888;font-size:13px">${err.message}</p>
+      <button id="marketRetryBtn" class="btn" style="max-width:200px">Retry</button>
+    </div>`;
+    document.getElementById('marketRetryBtn')?.addEventListener('click', () => {
+      _mounted = false;
+      _launchMarketplaceDirect(popupContent, popupOverlay);
+    });
+  }
+}
+
+/**
+ * Shared close/cleanup logic
+ */
+function _closeMarketplace(popupContent, popupOverlay, studio) {
+  try { _marketplaceUI?.unmount(); } catch (e) {}
+  _mounted = false;
+  _marketplaceAPI = null;
+  _marketplaceUI = null;
+  if (studio) {
+    studio.marketplaceAPI = null;
+    studio.marketplaceUI = null;
+  }
+  if (popupContent) {
+    popupContent.style.cssText =
+      'background:#1e1e2e;border-radius:8px;border:1px solid #444;min-width:320px;max-width:500px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
+  }
+  if (popupOverlay?.classList) {
+    popupOverlay.classList.remove('open');
+  } else if (popupOverlay?.style) {
+    popupOverlay.style.display = 'none';
+  }
 }

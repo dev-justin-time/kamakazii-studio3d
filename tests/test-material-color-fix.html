@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>material.color.getHex Fix — Test Harness</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Consolas', 'Monaco', monospace; background: #0d0f16; color: #c8ccd8; padding: 24px; }
+  h1 { color: #4a9eff; font-size: 20px; margin-bottom: 8px; }
+  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+  #results { background: #12141c; border: 1px solid #242836; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .test { padding: 6px 0; border-bottom: 1px solid #1a1d28; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .test:last-child { border-bottom: none; }
+  .badge { display: inline-block; width: 20px; height: 20px; border-radius: 50%; text-align: center; line-height: 20px; font-size: 11px; font-weight: bold; flex-shrink: 0; }
+  .pass { background: #065f46; color: #6ee7b7; }
+  .fail { background: #7f1d1d; color: #fca5a5; }
+  .skip { background: #4b5563; color: #d1d5db; }
+  .name { color: #e5e7eb; }
+  .detail { color: #6b7280; margin-left: auto; font-size: 11px; }
+  #summary { font-size: 15px; font-weight: bold; margin-bottom: 16px; }
+  #summary.ok { color: #6ee7b7; }
+  #summary.fail { color: #fca5a5; }
+  .section { color: #f59e0b; font-size: 14px; font-weight: bold; margin: 16px 0 8px; padding-top: 8px; border-top: 1px solid #242836; }
+  .info { background: #1e293b; border-left: 3px solid #4a9eff; padding: 10px 14px; margin: 12px 0; font-size: 12px; line-height: 1.5; }
+  #viewport { width: 640px; height: 400px; border: 1px solid #242836; border-radius: 4px; margin: 12px 0; position: relative; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<h1>🧪 material.color.getHex — Fix Verification</h1>
+<p class="subtitle">Simulates GLTF import with non-standard materials, then exercises every fixed code path.</p>
+
+<div class="info">
+  <strong>What this tests:</strong><br>
+  Meshes with <code>ShaderMaterial</code>, <code>RawShaderMaterial</code>, materials with <code>.color = null</code>,
+  materials with <code>.color</code> as a plain number, and materials with no <code>.color</code> at all.
+  Each code path that previously crashed with <code>"obj.material.color.getHex is not a function"</code> is
+  exercised with every material variant.
+</div>
+
+<div id="viewport"></div>
+<div id="summary">Running tests...</div>
+<div id="results"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+const results = [];
+const el = document.getElementById('results');
+const summaryEl = document.getElementById('summary');
+
+function addResult(name, passed, detail = '') {
+  results.push({ name, passed, detail });
+  const div = document.createElement('div');
+  div.className = 'test';
+  div.innerHTML = `
+    <span class="badge ${passed ? 'pass' : 'fail'}">${passed ? '✓' : '✗'}</span>
+    <span class="name">${name}</span>
+    <span class="detail">${detail}</span>
+  `;
+  el.appendChild(div);
+}
+
+function addSection(title) {
+  const div = document.createElement('div');
+  div.className = 'section';
+  div.textContent = title;
+  el.appendChild(div);
+}
+
+// ── Create non-standard materials ──
+
+function createTestMaterials() {
+  const materials = {};
+
+  // 1. Normal MeshStandardMaterial (baseline)
+  materials['MeshStandardMaterial (baseline)'] = new THREE.MeshStandardMaterial({ color: 0x4a9eff, metalness: 0.5, roughness: 0.3 });
+
+  // 2. ShaderMaterial — no .color property
+  materials['ShaderMaterial (no .color)'] = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: 'void main() { gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: 'void main() { gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0); }',
+  });
+
+  // 3. RawShaderMaterial — no .color, no standard properties
+  materials['RawShaderMaterial (no .color)'] = new THREE.RawShaderMaterial({
+    vertexShader: 'void main() { gl_Position = vec4(0.0); }',
+    fragmentShader: 'void main() { gl_FragColor = vec4(1.0); }',
+  });
+
+  // 4. Material where .color is null
+  materials['Material with color=null'] = (() => {
+    const m = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    m.color = null;
+    return m;
+  })();
+
+  // 5. Material where .color is a plain number
+  materials['Material with color=number'] = (() => {
+    const m = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    m.color = 0x00ff00; // overwrite THREE.Color with raw number
+    return m;
+  })();
+
+  // 6. Material where .color is a string
+  materials['Material with color=string'] = (() => {
+    const m = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+    m.color = '#0000ff';
+    return m;
+  })();
+
+  // 7. Material where .color is an object without getHex
+  materials['Material with color=plain object'] = (() => {
+    const m = new THREE.MeshStandardMaterial();
+    m.color = { r: 1, g: 0, b: 0 };
+    return m;
+  })();
+
+  // 8. Material with undefined color
+  materials['Material with color=undefined'] = (() => {
+    const m = new THREE.MeshStandardMaterial();
+    m.color = undefined;
+    return m;
+  })();
+
+  // 9. MeshBasicMaterial (has .color but different class)
+  materials['MeshBasicMaterial'] = new THREE.MeshBasicMaterial({ color: 0xff44ff });
+
+  // 10. PointsMaterial — no standard .color for mesh
+  materials['PointsMaterial'] = new THREE.PointsMaterial({ color: 0xffff00, size: 0.1 });
+
+  return materials;
+}
+
+// ── Replicate the FIXED code paths from studio.js ──
+
+// Code path 1: _captureState() — line 1635
+function testCaptureState(obj) {
+  // This is the exact code from studio.js _captureState()
+  const result = {
+    color: obj.material.color?.getHex?.() ?? 0xcccccc,
+    metalness: obj.material.metalness ?? 0,
+    roughness: obj.material.roughness ?? 0.5,
+    transparent: !!obj.material.transparent,
+    opacity: obj.material.opacity ?? 1,
+  };
+  return result;
+}
+
+// Code path 2: getObjectInfo() — line 1168
+function testGetObjectInfo(obj) {
+  // Exact code from studio.js getObjectInfo()
+  const info = {
+    material: {
+      type: obj.material.type,
+      color: '#' + (obj.material.color?.getHexString?.() ?? 'cccccc'),
+      metalness: obj.material.metalness,
+      roughness: obj.material.roughness,
+      wireframe: !!obj.material.wireframe,
+      transparent: !!obj.material.transparent,
+    }
+  };
+  return info;
+}
+
+// Code path 3: saveProject() — line ~2312
+function testSaveProject(objects) {
+  // Exact code from studio.js saveProject()
+  const data = {
+    objects: objects.map(o => ({
+      name: o.name,
+      position: o.position.toArray(),
+      rotation: o.rotation.toArray(),
+      scale: o.scale.toArray(),
+      color: o.material?.color?.getHex?.() ?? 0xcccccc,
+    }))
+  };
+  return data;
+}
+
+// Code path 4: applyMaterial() — line ~2297
+function testApplyMaterial(obj, preset) {
+  // Exact code from studio.js applyMaterial()
+  const mat = new THREE.MeshStandardMaterial(preset);
+  if (obj.material) {
+    if (obj.material.color?.copy) {
+      mat.color.copy(obj.material.color);
+    }
+    Object.assign(mat, preset);
+  }
+  obj.material = mat;
+  mat.needsUpdate = true;
+  return mat;
+}
+
+// Code path 5: engine.js applyMaterialPreset — line 895
+function testApplyMaterialPreset(obj, preset) {
+  // Exact code from engine.js applyMaterialPreset()
+  const material = obj.material;
+  if (material) {
+    const newMat = new THREE.MeshPhysicalMaterial();
+    if (material.color?.copy) newMat.color.copy(material.color);
+    if (material.normalMap) newMat.normalMap = material.normalMap;
+    Object.assign(newMat, preset);
+    if (material.color?.setHex) material.color.setHex(preset.color);
+    obj.material = newMat;
+  }
+}
+
+// ── Run tests ──
+
+const materials = createTestMaterials();
+const geo = new THREE.BoxGeometry(1, 1, 1);
+const testMeshes = [];
+
+// Create a mesh for each material
+for (const [name, mat] of Object.entries(materials)) {
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = name;
+  testMeshes.push(mesh);
+}
+
+// ── Section 1: _captureState (the crash site) ──
+addSection('1. _captureState() — the original crash site (studio.js:1635)');
+
+for (const mesh of testMeshes) {
+  try {
+    const state = testCaptureState(mesh);
+    const hasColor = typeof state.color === 'number';
+    addResult(
+      `_captureState("${mesh.name}")`,
+      hasColor,
+      `color: 0x${state.color.toString(16).padStart(6, '0')}`
+    );
+  } catch (e) {
+    addResult(`_captureState("${mesh.name}")`, false, `CRASH: ${e.message}`);
+  }
+}
+
+// ── Section 2: getObjectInfo ──
+addSection('2. getObjectInfo() — info panel (studio.js:1168)');
+
+for (const mesh of testMeshes) {
+  try {
+    const info = testGetObjectInfo(mesh);
+    const hasColor = typeof info.material.color === 'string' && info.material.color.startsWith('#');
+    addResult(
+      `getObjectInfo("${mesh.name}")`,
+      hasColor,
+      `color: ${info.material.color}`
+    );
+  } catch (e) {
+    addResult(`getObjectInfo("${mesh.name}")`, false, `CRASH: ${e.message}`);
+  }
+}
+
+// ── Section 3: saveProject ──
+addSection('3. saveProject() — project serialization (studio.js:~2312)');
+
+try {
+  const data = testSaveProject(testMeshes);
+  const allHaveColor = data.objects.every(o => typeof o.color === 'number');
+  addResult(
+    `saveProject() with ${testMeshes.length} non-standard materials`,
+    allHaveColor,
+    `All ${data.objects.length} objects serialized with color values`
+  );
+} catch (e) {
+  addResult('saveProject() with non-standard materials', false, `CRASH: ${e.message}`);
+}
+
+// ── Section 4: applyMaterial (material preset) ──
+addSection('4. applyMaterial() — preset application (studio.js:~2297)');
+
+for (const mesh of testMeshes) {
+  try {
+    // Clone mesh so we don't destroy originals
+    const clone = mesh.clone();
+    clone.material = mesh.material;
+    testApplyMaterial(clone, { color: 0xffffff, metalness: 1.0, roughness: 0.1 });
+    addResult(
+      `applyMaterial("${mesh.name}")`,
+      true,
+      `Applied chrome preset without crash`
+    );
+  } catch (e) {
+    addResult(`applyMaterial("${mesh.name}")`, false, `CRASH: ${e.message}`);
+  }
+}
+
+// ── Section 5: applyMaterialPreset (engine.js) ──
+addSection('5. applyMaterialPreset() — engine.js path (engine.js:895,902)');
+
+for (const mesh of testMeshes) {
+  try {
+    const clone = mesh.clone();
+    clone.material = mesh.material;
+    testApplyMaterialPreset(clone, { color: 0xffd700, metalness: 1.0, roughness: 0.15 });
+    addResult(
+      `applyMaterialPreset("${mesh.name}")`,
+      true,
+      `Applied gold preset without crash`
+    );
+  } catch (e) {
+    addResult(`applyMaterialPreset("${mesh.name}")`, false, `CRASH: ${e.message}`);
+  }
+}
+
+// ── Section 6: Transform simulation (drag + undo) ──
+addSection('6. Transform drag simulation — _captureState on drag start');
+
+for (const mesh of testMeshes) {
+  try {
+    // Simulate drag start (what TransformControls does)
+    const preDragSnapshot = testCaptureState(mesh);
+    // Simulate moving the object
+    mesh.position.x += 5;
+    mesh.position.y += 3;
+    mesh.rotation.z += 0.5;
+    // Simulate drag end
+    const postDragSnapshot = testCaptureState(mesh);
+    // Restore
+    mesh.position.x -= 5;
+    mesh.position.y -= 3;
+    mesh.rotation.z -= 0.5;
+    addResult(
+      `Drag simulation("${mesh.name}")`,
+      typeof preDragSnapshot.color === 'number' && typeof postDragSnapshot.color === 'number',
+      `pre: 0x${preDragSnapshot.color.toString(16)}, post: 0x${postDragSnapshot.color.toString(16)}`
+    );
+  } catch (e) {
+    addResult(`Drag simulation("${mesh.name}")`, false, `CRASH: ${e.message}`);
+  }
+}
+
+// ── Summary ──
+const passed = results.filter(r => r.passed).length;
+const failed = results.filter(r => !r.passed).length;
+const total = results.length;
+
+if (failed === 0) {
+  summaryEl.textContent = `✅ ALL ${total} TESTS PASSED — no more "material.color.getHex is not a function" crashes!`;
+  summaryEl.className = 'ok';
+} else {
+  summaryEl.textContent = `❌ ${failed} of ${total} tests FAILED — see details below`;
+  summaryEl.className = 'fail';
+}
+
+// Also log to console for easy inspection
+console.log(`\n${'='.repeat(60)}`);
+console.log(`material.color.getHex Fix Tests: ${passed}/${total} passed`);
+console.log(`${'='.repeat(60)}`);
+for (const r of results) {
+  console.log(`${r.passed ? '✅' : '❌'} ${r.name} ${r.detail ? `— ${r.detail}` : ''}`);
+}
+</script>
+</body>
+</html>

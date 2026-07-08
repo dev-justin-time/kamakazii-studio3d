@@ -193,6 +193,11 @@ export class StudioShell {
           { id: 'foliage',  label: 'Foliage',      icon: '🌿', desc: 'Grass, trees, vegetation scatter system' },
           { id: 'game',     label: 'Game',         icon: '🎮', desc: 'Game mode export, physics setup' },
           { id: 'physics',  label: 'Physics',      icon: '⚡', desc: 'Rigid body, soft body, cloth simulation' },
+          { id: 'terrain-presets', label: 'Presets',  icon: '🏔️', desc: 'Pre-built terrain configurations — quick start maps' },
+          { id: 'biome-painter', label: 'Biomes',    icon: '🎨', desc: 'Paint terrain biomes with brush tools' },
+          { id: 'scenery-scatter', label: 'Scatter',  icon: '🌳', desc: 'Distribute vegetation, rocks, props across terrain' },
+          { id: 'terrain-export', label: 'Export',    icon: '📤', desc: 'Export terrain to OBJ, glTF, heightmap, STL, FBX' },
+          { id: 'terrain-analytics', label: 'Analytics', icon: '📊', desc: 'Height distribution, slope, flow, viewshed analysis' },
         ]
       },
       {
@@ -370,7 +375,7 @@ export class StudioShell {
 
     try {
       // Try to dynamically import the feature page module
-      const mod = await import(`/studio/features/${id}/page.js`);
+      const mod = await import(`../features/${id}/page.js`);
       this._popupContent.innerHTML = '';
       const header = document.createElement('div');
       header.style.cssText = 'margin-bottom:16px;font-size:16px;font-weight:600;color:#eee';

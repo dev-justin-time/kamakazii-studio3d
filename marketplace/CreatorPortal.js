@@ -17,7 +17,11 @@ export class CreatorPortal {
     this.store = marketplaceStore;
     this.monetization = monetizationEngine;
 
-    // Creator profile (saved locally for now — would sync to cloud)
+    // Creator profile — synced to Puter.js KV when available, falls back to localStorage
+    this._cloudSyncEnabled = false;
+    this._cloudSyncTimer = null;
+    this._cloudSyncInterval = 30000; // sync every 30s if dirty
+    this._cloudDirty = false;
     this.profile = {
       id: null,
       username: 'Anonymous Creator',
@@ -47,7 +51,9 @@ export class CreatorPortal {
 
   updateProfile(updates) {
     Object.assign(this.profile, updates);
+    this._cloudDirty = true;
     console.log(`[CreatorPortal] Profile updated: ${this.profile.displayName}`);
+    this._scheduleCloudSync();
     return this.profile;
   }
 
@@ -294,11 +300,112 @@ export class CreatorPortal {
     this.notifications.forEach(n => n.read = true);
   }
 
+  /* ── Cloud Sync (Puter.js KV) ── */
+
+  /**
+   * Initialize cloud sync. Call once after construction.
+   * Uses Puter.js KV store when available, falls back to localStorage.
+   */
+  async initCloudSync() {
+    if (typeof window !== 'undefined' && window.puter && window.puter.kv) {
+      this._cloudSyncEnabled = true;
+      console.log('[CreatorPortal] Cloud sync enabled via Puter.js KV');
+      // Pull latest from cloud on init
+      await this._syncFromCloud();
+    } else {
+      console.info('[CreatorPortal] Puter.js KV not available — using localStorage only');
+    }
+    // Also load from localStorage as immediate fallback
+    this._loadFromLocalStorage();
+  }
+
+  _scheduleCloudSync() {
+    if (this._cloudSyncTimer) return;
+    this._cloudSyncTimer = setTimeout(() => {
+      this._cloudSyncTimer = null;
+      this._syncToCloud();
+    }, this._cloudSyncInterval);
+  }
+
+  async _syncToCloud() {
+    if (!this._cloudDirty) return;
+    const data = this.serialize();
+    const json = JSON.stringify(data);
+
+    // Always save to localStorage
+    try {
+      localStorage.setItem('kamakazii_creator_profile', json);
+    } catch { /* quota exceeded */ }
+
+    // Sync to Puter.js KV if available
+    if (this._cloudSyncEnabled && window.puter?.kv) {
+      try {
+        await window.puter.kv.set('kamakazii_creator_profile', json);
+        this._cloudDirty = false;
+        console.log('[CreatorPortal] Profile synced to cloud');
+      } catch (err) {
+        console.warn('[CreatorPortal] Cloud sync failed:', err.message);
+      }
+    } else {
+      this._cloudDirty = false;
+    }
+  }
+
+  async _syncFromCloud() {
+    if (!this._cloudSyncEnabled || !window.puter?.kv) return;
+    try {
+      const json = await window.puter.kv.get('kamakazii_creator_profile');
+      if (json) {
+        const data = typeof json === 'string' ? JSON.parse(json) : json;
+        // Merge: cloud wins on conflict (most recent write)
+        if (data.profile) {
+          const cloudTime = data.profile._syncedAt || 0;
+          const localTime = this.profile._syncedAt || 0;
+          if (cloudTime >= localTime) {
+            this.profile = { ...this.profile, ...data.profile };
+          }
+        }
+        if (data.drafts) {
+          for (const [id, draft] of data.drafts) {
+            if (!this.drafts.has(id)) this.drafts.set(id, draft);
+          }
+        }
+        console.log('[CreatorPortal] Synced profile from cloud');
+      }
+    } catch (err) {
+      console.warn('[CreatorPortal] Cloud pull failed:', err.message);
+    }
+  }
+
+  _loadFromLocalStorage() {
+    try {
+      const json = localStorage.getItem('kamakazii_creator_profile');
+      if (json) {
+        const data = JSON.parse(json);
+        if (data.profile) this.profile = { ...this.profile, ...data.profile };
+        if (data.drafts) this.drafts = new Map(data.drafts);
+        if (data.notifications) this.notifications = data.notifications;
+      }
+    } catch { /* corrupt localStorage — ignore */ }
+  }
+
+  /**
+   * Force an immediate cloud sync (e.g., on page unload).
+   */
+  async flush() {
+    this._cloudDirty = true;
+    if (this._cloudSyncTimer) {
+      clearTimeout(this._cloudSyncTimer);
+      this._cloudSyncTimer = null;
+    }
+    await this._syncToCloud();
+  }
+
   /* ── Serialization ── */
 
   serialize() {
     return {
-      profile: this.profile,
+      profile: { ...this.profile, _syncedAt: Date.now() },
       drafts: Array.from(this.drafts.entries()),
       notifications: this.notifications
     };
