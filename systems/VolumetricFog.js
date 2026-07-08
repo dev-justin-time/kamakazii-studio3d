@@ -20,6 +20,7 @@
  */
 
 import * as THREE from 'three';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 const VERTEX_SHADER = `
   varying vec2 vUv;
@@ -189,13 +190,7 @@ export class VolumetricFog {
     this._material = this._createMaterial();
 
     // ── Full-screen quad ──
-    this._quad = new THREE.FullScreenQuad(this._material);
-
-    // ── Noise texture (procedural 3D noise baked into a 3D texture) ──
-    this._noiseTexture = this._generateNoiseTexture();
-    if (this._noiseTexture) {
-      this._material.uniforms.tNoise = { value: this._noiseTexture };
-    }
+    this._quad = new FullScreenQuad(this._material);
 
     // Bind resize
     this._onResize = () => this._handleResize();
@@ -280,7 +275,6 @@ export class VolumetricFog {
     this._quad.dispose();
     this._material.dispose();
     this._target.dispose();
-    if (this._noiseTexture) this._noiseTexture.dispose();
     window.removeEventListener('resize', this._onResize);
   }
 
@@ -307,44 +301,6 @@ export class VolumetricFog {
       depthWrite: false,
       depthTest: false,
     });
-  }
-
-  /**
-   * Generate a small 3D noise texture for organic fog variation.
-   * Falls back to the the fragment-shader procedural noise if
-   * 3D textures are unsupported.
-   */
-  _generateNoiseTexture() {
-    try {
-      const size = 32;
-      const data = new Uint8Array(size * size * size * 4);
-      for (let z = 0; z < size; z++) {
-        for (let y = 0; y < size; y++) {
-          for (let x = 0; x < size; x++) {
-            const i = (z * size * size + y * size + x) * 4;
-            const v = Math.floor(Math.random() * 256);
-            data[i]     = v;
-            data[i + 1] = v;
-            data[i + 2] = v;
-            data[i + 3] = 255;
-          }
-        }
-      }
-      const tex = new THREE.Data3DTexture(data, size, size, size);
-      tex.format = THREE.RGBAFormat;
-      tex.type = THREE.UnsignedByteType;
-      tex.minFilter = THREE.LinearFilter;
-      tex.magFilter = THREE.LinearFilter;
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      tex.wrapR = THREE.RepeatWrapping;
-      tex.needsUpdate = true;
-      return tex;
-    } catch (_) {
-      // 3D textures unsupported — the fragment shader falls back to
-      // procedural `noise3D()` so this is non-critical.
-      return null;
-    }
   }
 
   _handleResize() {

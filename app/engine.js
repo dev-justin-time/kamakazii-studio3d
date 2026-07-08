@@ -328,19 +328,76 @@ class ProModelerStudio {
     // ... Feature initialization methods ...
 
     initializeVolumetricEffects() {
+        // Lazily import the raymarched volumetric fog system so the engine
+        // doesn't need to load the heavy GLSL source at constructor time.
+        const self = this;
+        this._volumetricFogInstance = null;
+        this._volumetricFogReady = import('../systems/VolumetricFog.js').then(({ VolumetricFog }) => {
+            const fog = new VolumetricFog(self.renderer, {
+                density: 0.08,
+                color: 0x8899aa,
+                heightFalloff: 0.15,
+                noiseScale: 0.4,
+                noiseStrength: 0.25,
+            });
+            self._volumetricFogInstance = fog;
+            return fog;
+        }).catch(err => {
+            console.warn('[Engine] VolumetricFog init failed:', err);
+            self._volumetricFogInstance = null;
+            return null;
+        });
+
         this.volumetricFog = {
             enabled: false,
-            density: 0.1,
-            color: new THREE.Color(0x404040),
-            create: () => {
-                console.warn('[Engine] volumetricFog.create uses simple THREE.Fog — no true volumetric/fog-volume rendering. Advanced fog requires custom shaders.');
-                this.scene.fog = new THREE.Fog(this.volumetricFog.color, 1, 100);
-                this.ui.log('Volumetric fog enabled (basic THREE.Fog — not true volumetric)', 'info');
+            density: 0.08,
+            color: new THREE.Color(0x8899aa),
+
+            /** Activate true raymarched volumetric fog */
+            create: async () => {
+                const fog = await self._volumetricFogReady;
+                if (!fog) {
+                    console.warn('[Engine] VolumetricFog not available');
+                    self.ui.log('Volumetric fog unavailable — resources failed to load', 'error');
+                    return;
+                }
+                fog.density = self.volumetricFog.density;
+                fog.color.copy(self.volumetricFog.color);
+                fog.enable();
+                // Clear the basic THREE.Fog if it was set
+                self.scene.fog = null;
+                self.ui.log('True volumetric fog enabled (raymarched depth-aware shader)', 'success');
             },
-            remove: () => {
-                this.scene.fog = null;
-                this.ui.log('Volumetric fog disabled', 'info');
-            }
+
+            /** Deactivate volumetric fog */
+            remove: async () => {
+                const fog = await self._volumetricFogReady;
+                if (fog) fog.remove();
+                self.ui.log('Volumetric fog disabled', 'info');
+            },
+
+            /** Toggle on/off */
+            toggle: async () => {
+                const active = self._volumetricFogInstance && self._volumetricFogInstance.enabled;
+                if (active) {
+                    await self.volumetricFog.remove();
+                } else {
+                    await self.volumetricFog.create();
+                }
+            },
+
+            /** Update a parameter and live-apply if active */
+            setParam: async (key, value) => {
+                self.volumetricFog[key] = value;
+                if (key === 'color') self.volumetricFog.color = new THREE.Color(value);
+                if (self._volumetricFogInstance && self._volumetricFogInstance.enabled) {
+                    const fog = await self._volumetricFogReady;
+                    if (fog) {
+                        fog[key] = value;
+                        if (key === 'color') fog.color.copy(self.volumetricFog.color);
+                    }
+                }
+            },
         };
     }
 
@@ -1397,7 +1454,15 @@ class ProModelerStudio {
         }
     }
     
-    render() { this.renderer.render(this.scene, this.camera); }
+    render() {
+        // If volumetric fog is active and initialised, use its depth-aware
+        // raymarching render which composites fog over the scene.
+        if (this._volumetricFogInstance && this._volumetricFogInstance.enabled) {
+            this._volumetricFogInstance.render(this.scene, this.camera);
+            return;
+        }
+        this.renderer.render(this.scene, this.camera);
+    }
     
     animate() {
         requestAnimationFrame(() => this.animate());
