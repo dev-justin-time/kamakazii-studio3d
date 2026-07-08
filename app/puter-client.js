@@ -1,428 +1,241 @@
-/* kamakazii_studio3D/app/puter-client.js
-   Responsibility: Puter.js integration layer for Studio 3D — KV storage,
-   user auth, AI completions, cloud save/load, and error logging.
-   Modeled after kamakazii_3d_aero_comand/game/puter-client.js.
-   Extracted as a standalone module so all three apps can eventually
-   share a root-level puter-lib.js.
-*/
+/* ═══════════════════════════════════════════════════════════════════════════
+   puter-client.js  –  Studio 3D Puter.js integration
+   ═══════════════════════════════════════════════════════════════════════════
+   Wraps the shared puter-lib.js (project root) with Studio 3D-specific
+   convenience methods: image generation (txt2img), TTS playback, and the
+   initPuter() function expected by the existing ui/index.html.
 
-// ═══════════════════════════════════════════════════════════════
-//  SDK Availability & Lazy Loading
-// ═══════════════════════════════════════════════════════════════
+   Usage:
+     import { initPuter, getUsername, generateImage, speak } from '../app/puter-client.js';
+     await initPuter();
+     const url = await generateImage('cyberpunk city at sunset');
+     speak('Image generated successfully');
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-let _puterReady = false;
-let _sdkLoadAttempted = false;
-let _onReadyCallbacks = [];
-let _authToken = null; // cached auth token
+import puterLib, {
+  resolvePuter,
+  isPuterAvailable,
+  auth,
+  kv,
+  fs,
+  ai,
+  ClientLogger,
+  setKvPrefix,
+} from '../../puter-lib.js';
+
+// ── Re-export shared lib for convenience ───────────────────────────────────
+export {
+  resolvePuter,
+  isPuterAvailable,
+  auth,
+  kv,
+  fs,
+  ai,
+  ClientLogger,
+  setKvPrefix,
+};
+export default puterLib;
+
+// ── Auth convenience re-exports for existing ui/index.html imports ─────────
+// ui/index.html does: import { initPuter, getUsername } from '../app/puter-client.js';
+export const getUsername = () => auth.getUsername();
+export const getUser = () => auth.getUser();
+export const getAvatarUrl = () => auth.getAvatarUrl();
+export const isSignedIn = () => auth.isSignedIn();
+
+// ─── Studio 3D-specific: initPuter() ──────────────────────────────────────
+// Called by ui/index.html during boot to initialize the Puter SDK and
+// subscribe to auth state changes.
+
+let _puterInitialized = false;
+let _puterUser = null;
+let _onAuthChangeCallbacks = [];
 
 /**
- * Check whether the Puter.js SDK is loaded and ready.
- * Returns true if puter global exists and is authenticated.
- */
-export function isPuterAvailable() {
-  return _puterReady && typeof puter !== 'undefined' && puter.auth && puter.auth.isSignedIn && puter.auth.isSignedIn();
-}
-
-/**
- * Wait for the Puter SDK to become available.
- * Resolves immediately if already ready; otherwise resolves
- * when the 'puterUserReady' custom event fires.
- */
-export function waitForPuter(timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    if (isPuterAvailable()) return resolve(true);
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Puter SDK not available within ' + timeoutMs + 'ms'));
-    }, timeoutMs);
-    const handler = () => { cleanup(); resolve(true); };
-    const cleanup = () => {
-      clearTimeout(timer);
-      window.removeEventListener('puterUserReady', handler);
-    };
-    window.addEventListener('puterUserReady', handler);
-    // Trigger init in case SDK loaded but event hasn't fired
-    if (!_sdkLoadAttempted) initPuter().catch(() => {});
-  });
-}
-
-/**
- * Initialize the Puter SDK — checks for signed-in user and
- * dispatches 'puterUserReady' when ready.
+ * Initialize Puter SDK for Studio 3D.
+ * Resolves the SDK, sets the KV prefix, and caches the current user.
+ * Safe to call multiple times — subsequent calls are no-ops.
+ *
+ * @returns {Promise<boolean>} Whether Puter was successfully initialized.
  */
 export async function initPuter() {
-  if (_sdkLoadAttempted) return;
-  _sdkLoadAttempted = true;
+  if (_puterInitialized) return !!_puterUser;
+
+  // Set KV key prefix to avoid collisions with other apps
+  setKvPrefix('studio3d_');
+
+  const p = await resolvePuter();
+  if (!p) {
+    console.warn('[puter-client] Puter SDK not available');
+    _puterInitialized = true;
+    _puterUser = null;
+    return false;
+  }
+
+  // Try to get the current user
   try {
-    if (typeof puter === 'undefined') {
-      console.warn('[Puter] SDK not loaded — add <script src="https://js.puter.com/v2/"> to index.html');
-      return;
+    _puterUser = await auth.getUser();
+    if (_puterUser) {
+      console.log('[puter-client] Signed in as', _puterUser.username || _puterUser.name);
+    } else {
+      console.log('[puter-client] Puter SDK ready, user not signed in');
     }
-    // Check if user is already signed in
-    if (puter.auth && puter.auth.isSignedIn && puter.auth.isSignedIn()) {
-      _puterReady = true;
-      window.dispatchEvent(new CustomEvent('puterUserReady'));
-      return;
+  } catch (_) {
+    _puterUser = null;
+  }
+
+  _puterInitialized = true;
+  return true;
+}
+
+/**
+ * Register a callback for Puter auth state changes.
+ * The callback is called with the user object (or null) whenever the
+ * sign-in state changes.
+ *
+ * @param {Function} cb — callback(user|null)
+ * @returns {Function} unsubscribe
+ */
+export function onAuthChange(cb) {
+  _onAuthChangeCallbacks.push(cb);
+  // Immediately invoke with current state
+  if (_puterInitialized) cb(_puterUser);
+  return () => {
+    const i = _onAuthChangeCallbacks.indexOf(cb);
+    if (i >= 0) _onAuthChangeCallbacks.splice(i, 1);
+  };
+}
+
+// ─── Image Generation (txt2img) ───────────────────────────────────────────
+
+/**
+ * Generate an image using Puter AI text-to-image.
+ * Wraps puter-lib's `ai.generateImage()` with Studio 3D-specific defaults
+ * and a synchronous fallback message for the status bar.
+ *
+ * @param {string}  prompt       — Text description of the image.
+ * @param {object}  [options]
+ * @param {string}  [options.size='512x512'] — Image size.
+ * @param {string}  [options.negative_prompt] — Things to avoid.
+ * @param {boolean} [options.silent=false] — If true, skip status bar updates.
+ * @returns {Promise<string|null>} The image URL, or null on failure.
+ */
+export async function generateImage(prompt, options = {}) {
+  if (!_puterInitialized) await initPuter();
+  if (!isPuterAvailable()) {
+    console.warn('[puter-client] Cannot generate image: Puter SDK unavailable');
+    return null;
+  }
+
+  const statusEl = document.getElementById('statusLeft');
+  if (!options.silent && statusEl) statusEl.textContent = '🎨 Generating image...';
+
+  try {
+    const url = await ai.generateImage(prompt, {
+      size: options.size || '512x512',
+      negative_prompt: options.negative_prompt || undefined,
+    });
+
+    if (url) {
+      if (!options.silent && statusEl) statusEl.textContent = '✅ Image generated';
+      return url;
     }
-    // If not signed in, attempt silent sign-in
-    if (puter.auth && typeof puter.auth.signIn === 'function') {
-      try {
-        const user = await puter.auth.signIn({ silent: true });
-        if (user) {
-          _puterReady = true;
-          window.dispatchEvent(new CustomEvent('puterUserReady'));
-          return;
-        }
-      } catch (_) {
-        // Silent sign-in failed — user needs to click login
-        console.log('[Puter] Silent sign-in not available; user will need to click Sign In');
-      }
-    }
+
+    if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation failed';
+    return null;
   } catch (e) {
-    console.warn('[Puter] Init error:', e);
+    console.warn('[puter-client] generateImage error:', e);
+    if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation error';
+    return null;
   }
 }
 
-// Listen for the Puter SDK load event
-window.addEventListener('puterUserReady', () => {
-  _puterReady = true;
-});
+// ─── Text-to-Speech (TTS) ─────────────────────────────────────────────────
 
-// ═══════════════════════════════════════════════════════════════
-//  Auth / User Identity
-// ═══════════════════════════════════════════════════════════════
+let _ttsAudioContext = null;
 
 /**
- * Get the current signed-in user's display name.
- * Returns null if not signed in.
+ * Get or create a shared AudioContext for TTS playback.
  */
-export async function getUsername() {
-  if (!isPuterAvailable()) return null;
-  try {
-    const user = await puter.auth.getUser();
-    return user ? (user.username || user.name || user.email || null) : null;
-  } catch (_) { return null; }
-}
-
-/**
- * Get the current user's avatar URL.
- */
-export async function getAvatarUrl() {
-  if (!isPuterAvailable()) return null;
-  try {
-    const user = await puter.auth.getUser();
-    return user && user.avatar_url ? user.avatar_url : null;
-  } catch (_) { return null; }
-}
-
-/**
- * Trigger Puter OAuth sign-in flow.
- * Returns user object on success, null on failure/cancel.
- */
-export async function signIn() {
-  try {
-    if (typeof puter === 'undefined') {
-      console.warn('[Puter] SDK not loaded');
+function _getTtsContext() {
+  if (!_ttsAudioContext) {
+    try {
+      _ttsAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (_) {
       return null;
     }
-    const user = await puter.auth.signIn();
-    if (user) {
-      _puterReady = true;
-      window.dispatchEvent(new CustomEvent('puterUserReady'));
-    }
-    return user || null;
-  } catch (e) {
-    console.warn('[Puter] Sign-in failed:', e);
-    return null;
   }
-}
-
-/**
- * Sign out / disconnect Puter session.
- */
-export async function signOut() {
-  try {
-    if (puter.auth && typeof puter.auth.signOut === 'function') {
-      await puter.auth.signOut();
-    }
-    _puterReady = false;
-    // Clear cached token
-    localStorage.removeItem('puterApiKey');
-    window.dispatchEvent(new CustomEvent('puterUserSignedOut'));
-  } catch (e) {
-    console.warn('[Puter] Sign-out failed:', e);
+  if (_ttsAudioContext.state === 'suspended') {
+    _ttsAudioContext.resume().catch(() => {});
   }
+  return _ttsAudioContext;
 }
 
 /**
- * Refresh the current user session.
+ * Speak text using Puter AI TTS (txt2speech).
+ * Downloads the audio data and plays it through the Web Audio API.
+ * Falls back to the Web Speech API if Puter AI TTS is unavailable.
+ *
+ * @param {string}  text       — The text to speak.
+ * @param {object}  [options]
+ * @param {boolean} [options.silent=false] — Skip status bar updates.
+ * @param {boolean} [options.voice=false]  — Use Web Speech API instead.
+ * @returns {Promise<boolean>} Whether TTS was successful.
  */
-export async function refreshUser() {
-  _sdkLoadAttempted = false;
-  _puterReady = false;
-  await initPuter();
-}
+export async function speak(text, options = {}) {
+  if (!_puterInitialized) await initPuter();
+  if (!text || !text.trim()) return false;
 
-// ═══════════════════════════════════════════════════════════════
-//  KV Storage (with localStorage fallback)
-// ═══════════════════════════════════════════════════════════════
+  const statusEl = document.getElementById('statusLeft');
+  if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking...';
 
-function kvLocalGet(key) {
-  try { return localStorage.getItem('puter_kv_' + key); } catch (_) { return null; }
-}
-function kvLocalSet(key, val) {
-  try { localStorage.setItem('puter_kv_' + key, val); } catch (_) {}
-}
-function kvLocalRemove(key) {
-  try { localStorage.removeItem('puter_kv_' + key); } catch (_) {}
-}
-
-/**
- * Set a value in Puter KV (with localStorage fallback).
- */
-export async function kvSet(key, value) {
-  // Always persist to local first (offline-first)
-  kvLocalSet(key, typeof value === 'string' ? value : JSON.stringify(value));
-  if (!isPuterAvailable()) return;
-  try {
-    await puter.kv.set(key, typeof value === 'string' ? value : JSON.stringify(value));
-  } catch (e) {
-    console.warn('[Puter KV] Write failed (local fallback active):', key, e);
-  }
-}
-
-/**
- * Get a value from Puter KV (with localStorage fallback).
- * Returns parsed JSON or raw string.
- */
-export async function kvGet(key) {
-  // Try Puter first
-  if (isPuterAvailable()) {
+  // Option 1: Use Puter AI TTS
+  if (!options.voice) {
     try {
-      const data = await puter.kv.get(key);
-      if (data !== null && data !== undefined) {
-        // Sync to local for offline availability
-        kvLocalSet(key, typeof data === 'string' ? data : JSON.stringify(data));
-        try { return JSON.parse(data); } catch (_) { return data; }
+      const audioResult = await ai.textToSpeech(text);
+      if (audioResult) {
+        // audioResult could be a URL or a data URI
+        const ctx = _getTtsContext();
+        if (ctx) {
+          const response = await fetch(audioResult);
+          const arrayBuffer = await response.arrayBuffer();
+          const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(ctx.destination);
+          source.start(0);
+          if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking';
+          return true;
+        }
       }
     } catch (e) {
-      console.warn('[Puter KV] Read failed, falling back to local:', key, e);
+      console.warn('[puter-client] Puter TTS failed, falling back to Web Speech:', e);
     }
   }
-  // Fallback to localStorage
-  const local = kvLocalGet(key);
-  if (local !== null) {
-    try { return JSON.parse(local); } catch (_) { return local; }
-  }
-  return null;
-}
 
-/**
- * Delete a key from Puter KV (and local).
- */
-export async function kvDelete(key) {
-  kvLocalRemove(key);
-  if (isPuterAvailable()) {
-    try { await puter.kv.delete(key); } catch (_) {}
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  AI Completions
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Send a chat completion request to Puter AI.
- * Returns the response text or null on failure.
- */
-export async function aiChat(prompt, options = {}) {
-  if (!isPuterAvailable()) return null;
-  try {
-    if (puter.ai && typeof puter.ai.chat === 'function') {
-      const response = await puter.ai.chat(prompt, options);
-      return response || null;
+  // Option 2: Fallback to Web Speech API
+  if ('speechSynthesis' in window) {
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      speechSynthesis.speak(utterance);
+      if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking (browser)';
+      return true;
+    } catch (e) {
+      console.warn('[puter-client] Web Speech TTS failed:', e);
     }
-    // Fallback to completions API
-    if (puter.ai && typeof puter.ai.complete === 'function') {
-      const response = await puter.ai.complete(prompt, options);
-      return response || null;
-    }
-    console.warn('[Puter AI] No chat/completion API available');
-    return null;
-  } catch (e) {
-    console.warn('[Puter AI] Chat failed:', e);
-    return null;
   }
+
+  if (!options.silent && statusEl) statusEl.textContent = '⚠️ TTS unavailable';
+  return false;
 }
 
 /**
- * Generate an image using Puter AI txt2img.
- * Returns the image URL or null on failure.
+ * Get the cached Puter user (fast, no async).
+ * Returns null if not yet initialized or not signed in.
  */
-export async function aiGenerateImage(prompt, options = {}) {
-  if (!isPuterAvailable()) return null;
-  try {
-    const url = await puter.ai.txt2img(prompt, options);
-    return url || null;
-  } catch (e) {
-    console.warn('[Puter AI] Image generation failed:', e);
-    return null;
-  }
+export function getPuterUser() {
+  return _puterUser;
 }
-
-/**
- * Synthesize text to speech using Puter AI.
- * Plays the audio and returns an Audio element.
- */
-export async function aiSpeak(text, cacheKey) {
-  if (!isPuterAvailable()) return null;
-  try {
-    const audio = await puter.ai.txt2speech(text);
-    if (audio) {
-      audio.play().catch(() => {});
-    }
-    return audio || null;
-  } catch (e) {
-    console.warn('[Puter AI] TTS failed:', e);
-    return null;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  File System
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * Write a file to the user's Puter drive.
- */
-export async function fsWrite(path, data) {
-  if (!isPuterAvailable()) return;
-  try {
-    const blob = data instanceof Blob ? data : new Blob([data], { type: 'application/octet-stream' });
-    await puter.fs.write(path, blob);
-  } catch (e) {
-    console.warn('[Puter FS] Write failed:', path, e);
-  }
-}
-
-/**
- * Read a file from the user's Puter drive.
- */
-export async function fsRead(path) {
-  if (!isPuterAvailable()) return null;
-  try {
-    return await puter.fs.read(path);
-  } catch (e) {
-    console.warn('[Puter FS] Read failed:', path, e);
-    return null;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  Scene / Project Cloud Sync
-// ═══════════════════════════════════════════════════════════════
-
-const SCENE_KV_PREFIX = 'studio3d_scene_';
-const PROJECT_LIST_KEY = 'studio3d_project_list';
-
-/**
- * Save a scene snapshot to Puter KV (with local fallback).
- * @param {string} projectId - unique project identifier
- * @param {object} sceneData - serialized scene (objects, materials, lights, cameras)
- */
-export async function saveSceneSnapshot(projectId, sceneData) {
-  const key = SCENE_KV_PREFIX + projectId;
-  const payload = {
-    version: 1,
-    timestamp: Date.now(),
-    data: sceneData,
-  };
-  await kvSet(key, payload);
-
-  // Update project list
-  const list = (await kvGet(PROJECT_LIST_KEY)) || [];
-  const existing = list.findIndex(p => p.id === projectId);
-  const entry = { id: projectId, name: sceneData.name || projectId, updatedAt: Date.now() };
-  if (existing >= 0) list[existing] = entry;
-  else list.push(entry);
-  await kvSet(PROJECT_LIST_KEY, list);
-}
-
-/**
- * Load a scene snapshot from Puter KV (with local fallback).
- */
-export async function loadSceneSnapshot(projectId) {
-  const key = SCENE_KV_PREFIX + projectId;
-  const data = await kvGet(key);
-  return data ? data.data : null;
-}
-
-/**
- * List all saved projects.
- */
-export async function listProjects() {
-  const list = (await kvGet(PROJECT_LIST_KEY)) || [];
-  return list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-}
-
-/**
- * Delete a saved project.
- */
-export async function deleteProject(projectId) {
-  await kvDelete(SCENE_KV_PREFIX + projectId);
-  const list = (await kvGet(PROJECT_LIST_KEY)) || [];
-  const filtered = list.filter(p => p.id !== projectId);
-  await kvSet(PROJECT_LIST_KEY, filtered);
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  Settings Sync
-// ═══════════════════════════════════════════════════════════════
-
-const SETTINGS_KEY = 'studio3d_settings';
-
-/**
- * Save user settings to cloud (with local fallback).
- */
-export async function saveSettings(settings) {
-  await kvSet(SETTINGS_KEY, settings);
-}
-
-/**
- * Load user settings from cloud (with local fallback).
- */
-export async function loadSettings() {
-  return await kvGet(SETTINGS_KEY);
-}
-
-// ═══════════════════════════════════════════════════════════════
-//  Auto-init on script load
-// ═══════════════════════════════════════════════════════════════
-
-// Attempt silent init when this module loads
-initPuter().catch(() => {});
-
-export default {
-  isPuterAvailable,
-  waitForPuter,
-  initPuter,
-  getUsername,
-  getAvatarUrl,
-  signIn,
-  signOut,
-  refreshUser,
-  kvSet,
-  kvGet,
-  kvDelete,
-  aiChat,
-  aiGenerateImage,
-  aiSpeak,
-  fsWrite,
-  fsRead,
-  saveSceneSnapshot,
-  loadSceneSnapshot,
-  listProjects,
-  deleteProject,
-  saveSettings,
-  loadSettings,
-};

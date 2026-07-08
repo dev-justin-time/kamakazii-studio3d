@@ -204,6 +204,9 @@ export class UIManager {
             });
         });
 
+        // ── Cloud status indicator in the asset panel header ──
+        this._initCloudStatusIndicator();
+
         // Asset Categories
         document.querySelectorAll('.assets-panel .category').forEach(cat => {
             cat.addEventListener('click', async () => {
@@ -220,10 +223,13 @@ export class UIManager {
                     assetGrid.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div><div style="text-align:center; width:100%; color:#888; font-size:12px; margin-top:10px;">Connecting to Asset Store...</div>';
                     
                     try {
+                        assetGrid.innerHTML = '<div class="loading-spinner" style="margin: 20px auto;"></div><div style="text-align:center; width:100%; color:#888; font-size:12px; margin-top:10px;">Connecting to Asset Store...</div>';
                         const assets = await this.studio.cloudSystem.fetchAssets();
                         this.renderCloudAssets(assets, assetGrid);
+                        this._updateCloudStatusIndicator(!!assets);
                     } catch (e) {
                         assetGrid.innerHTML = '<div style="color:#ff4444; text-align:center; padding:20px;">Failed to connect to store.</div>';
+                        this._updateCloudStatusIndicator(false);
                     }
                 } else {
                     // Reset to local assets (simplified restoration)
@@ -1601,6 +1607,123 @@ export class UIManager {
                 this.studio.selectedObject.type || 'object';
             this.studio.deleteSelectedObject?.();
             this.showStatus(`Deleted selected ${objectName}.`);
+        }
+    }
+
+    /* ── Cloud status indicator ────────────────────────────────────────── */
+
+    /**
+     * Find the asset panel header and insert a cloud connection status badge.
+     * If the header doesn't exist yet, schedules init for the next frame.
+     */
+    _initCloudStatusIndicator() {
+        const header = document.querySelector('.assets-panel .panel-header');
+        if (!header || !this.studio.cloudSystem) {
+            // Panel may not be rendered yet — try once more on next frame
+            if (!this._cloudStatusRetried) {
+                this._cloudStatusRetried = true;
+                requestAnimationFrame(() => this._initCloudStatusIndicator());
+            }
+            return;
+        }
+
+        // Avoid duplicate indicators
+        if (header.querySelector('.cloud-status-dot')) return;
+
+        const dot = document.createElement('span');
+        dot.className = 'cloud-status-dot cloud-status-checking';
+        dot.title = 'Checking Puter connection...';
+        dot.setAttribute('aria-label', 'Cloud connection: checking');
+        dot.textContent = 'Cloud';
+
+        // Insert into the panel-actions area (or at the end of the header)
+        const actions = header.querySelector('.panel-actions');
+        if (actions) {
+            actions.prepend(dot);
+        } else {
+            header.appendChild(dot);
+        }
+
+        // Make the indicator clickable — force a re-check on click
+        dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._refreshCloudStatus();
+        });
+
+        // Also wire the status bar indicator
+        const statusDot = document.getElementById('statusCloudDot');
+        if (statusDot) {
+            statusDot.addEventListener('click', () => {
+                this._refreshCloudStatus();
+            });
+        }
+
+        // Perform an initial async check
+        this._refreshCloudStatus();
+    }
+
+    /**
+     * Ping CloudSystem to determine current Puter connection state and update
+     * the indicator badges (asset panel header + main status bar).
+     */
+    async _refreshCloudStatus() {
+        const panelDot = document.querySelector('.assets-panel .cloud-status-dot');
+        if ((!panelDot && !document.getElementById('statusCloudDot')) || !this.studio.cloudSystem) return;
+
+        // Set all indicators to checking state
+        this._setCloudIndicatorsState('checking', 'Checking Puter connection...', 'Cloud connection: checking');
+
+        try {
+            // fetchAssets() will set cloudSystem._connected internally
+            await this.studio.cloudSystem.fetchAssets();
+            this._updateCloudStatusIndicator(this.studio.cloudSystem.isConnected());
+        } catch (_) {
+            this._updateCloudStatusIndicator(false);
+        }
+    }
+
+    /**
+     * Apply a CSS class + title + aria-label to all cloud status indicators.
+     */
+    _setCloudIndicatorsState(cssClass, title, ariaLabel) {
+        // Asset panel header indicator
+        const panelDot = document.querySelector('.assets-panel .cloud-status-dot');
+        if (panelDot) {
+            const base = cssClass === 'connected'
+                ? 'cloud-status-dot cloud-status-connected'
+                : cssClass === 'disconnected'
+                    ? 'cloud-status-dot cloud-status-disconnected'
+                    : 'cloud-status-dot cloud-status-checking';
+            panelDot.className = base;
+            panelDot.title = title;
+            panelDot.setAttribute('aria-label', ariaLabel);
+        }
+
+        // Main status bar indicator
+        const statusDot = document.getElementById('statusCloudDot');
+        if (statusDot) {
+            statusDot.className = 'status-cloud-indicator ' + cssClass;
+            statusDot.title = title;
+            statusDot.setAttribute('aria-label', ariaLabel);
+        }
+    }
+
+    /**
+     * Update all indicators to reflect connected or disconnected state.
+     */
+    _updateCloudStatusIndicator(connected) {
+        if (connected) {
+            this._setCloudIndicatorsState(
+                'connected',
+                'Connected to Puter — Cloud Store available',
+                'Cloud connection: connected'
+            );
+        } else {
+            this._setCloudIndicatorsState(
+                'disconnected',
+                'Puter not available — using local assets only',
+                'Cloud connection: disconnected'
+            );
         }
     }
 
