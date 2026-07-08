@@ -2,18 +2,12 @@
 mod-editor.js (replacement)
 Lightweight, safe mod-editor facade to provide import/export helpers and avoid
 the previous merge-conflict import markers. Exposes minimal API used by the app.
+
+Import/export is delegated to ModelIO for centralized format handling.
 */
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
-import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { normalizeImport } from './import-normalize.js';
-
-const gltfExporter = new GLTFExporter();
-const objExporter = new OBJExporter();
-const stlExporter = new STLExporter();
+import { ModelIO } from './ModelIO.js';
 
 export class ModelEditor {
   constructor(scene, camera, renderer, controls, transformControls) {
@@ -40,160 +34,55 @@ export class ModelEditor {
     this.undoStack = [];
     this.redoStack = [];
     this.maxUndoSize = 50;
+
+    // Centralized import/export via ModelIO
+    this.modelIO = new ModelIO({
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      objects: this.objects,
+      pluginRegistry: null,
+      ui: null,
+      selectedObject: null,
+      selectObject: (obj) => this.selectObject(obj),
+      frameAtDistance: null,
+      updateOutliner: null,
+    });
+    // Keep selectedObject reference live
+    Object.defineProperty(this.modelIO.ctx, 'selectedObject', {
+      get: () => this.selectedObject,
+    });
   }
 
-  // Basic import for ArrayBuffer/File/url - uses GLTF loader when possible
+  // ── Import/Export delegated to ModelIO ──
+
   importGltfModel(source) {
-    return new Promise((resolve, reject) => {
-      try {
-        if (source instanceof File) {
-          const reader = new FileReader();            reader.onload = (e) => {
-            const loader = new GLTFLoader();
-            loader.parse(e.target.result, '', (gltf) => {
-              const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              const result = this._finalizeImported(root, source.name);
-              resolve(result.wrapper);
-            }, reject);
-          };
-          reader.onerror = reject;
-          reader.readAsArrayBuffer(source);
-          return;
-        }
-
-        if (typeof source === 'string') {
-          const loader = new GLTFLoader();
-          loader.load(source, (gltf) => {
-            const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-            const result = this._finalizeImported(root, source.split('/').pop());
-            resolve(result.wrapper);
-          }, undefined, reject);
-          return;
-        }
-
-        // support multi-file descriptor { url, files, name } with URLModifier
-        if (source && typeof source === 'object' && source.url) {
-          // If files map provided, use URLModifier to resolve external resources
-          if (source.files && typeof source.files === 'object' && Object.keys(source.files).length >= 1) {
-            // Isolated manager so URLModifier doesn't leak to DefaultLoadingManager
-            const manager = new THREE.LoadingManager();
-            manager.setURLModifier((url) => {
-              const filename = url.split('/').pop().split('?')[0];
-              if (source.files[filename]) return source.files[filename];
-              if (url.startsWith('data:')) return url;
-              const decoded = decodeURIComponent(filename);
-              if (source.files[decoded]) return source.files[decoded];
-              return url;
-            });
-
-            const loader = new GLTFLoader(manager);
-            const draco = new DRACOLoader();
-            draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-            loader.setDRACOLoader(draco);
-
-            const nameHint = source.name || source.url.split('/').pop() || 'Imported';
-            const revokeAll = () => {
-              Object.values(source.files).forEach(u => URL.revokeObjectURL(u));
-            };
-
-            loader.load(source.url, (gltf) => {
-              const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              const result = this._finalizeImported(root, nameHint);
-              revokeAll();
-              resolve(result.wrapper);
-            }, undefined, (err) => {
-              revokeAll();
-              reject(err);
-            });
-          } else {
-            // Single URL — use instance gltfLoader directly
-            const gltfLoader = new GLTFLoader();
-            gltfLoader.load(source.url, (gltf) => {
-              const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-              const result = this._finalizeImported(root, source.name || source.url.split('/').pop());
-              resolve(result.wrapper);
-            }, undefined, reject);
-          }
-          return;
-        }
-
-        reject(new Error('Unsupported GLTF source'));
-      } catch (err) {
-        reject(err);
-      }
-    });
+    return this.modelIO.importFile(source, { normalize: true, frame: false });
   }
 
-  // Small helper used by ImportExportManager fallback
   importModel(source) {
-    const name = (source && source.name) || (typeof source === 'string' && source.split('/').pop()) || '';
-    const ext = (name.split('.').pop() || '').toLowerCase();
+    return this.modelIO.importFile(source, { normalize: true, frame: false });
+  }
 
-    if (ext === 'gltf' || ext === 'glb' || typeof source === 'string' || (source && source.url)) {
-      return this.importGltfModel(source);
+  async exportSelectedModel(format = 'glb') {
+    const ext = format === 'glb' ? 'glb' : format;
+    await this.modelIO.exportAs(format);
+    return `export.${ext}`;
+  }
+
+  async exportSceneAsFormat(format = 'json') {
+    if (format === 'json') {
+      const data = { objects: this.scene.children.map(c => ({ name: c.name })) };
+      const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      const name = 'scene.json';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+      return name;
     }
-    // For OBJ/STL File, try to use GLTF loader fallback or fail gracefully
-    return Promise.reject(new Error('No importer for this format in lightweight mod-editor'));
-  }
-
-  exportSelectedModel(format = 'glb') {
-    return new Promise((resolve, reject) => {
-      try {
-        const obj = this._getSelectedOrScene();
-        if (!obj) return reject(new Error('No object to export'));
-
-        if (format === 'obj') {
-          const data = objExporter.parse(obj);
-          const blob = new Blob([data], { type: 'text/plain' });
-          const name = 'export.obj';
-          this._downloadBlob(blob, name);
-          return resolve(name);
-        }
-
-        if (format === 'stl') {
-          const data = stlExporter.parse(obj);
-          const blob = new Blob([data], { type: 'application/sla' });
-          const name = 'export.stl';
-          this._downloadBlob(blob, name);
-          return resolve(name);
-        }
-
-        // default to glb/gltf via GLTFExporter
-        const binary = (format === 'glb');
-        gltfExporter.parse(obj, (result) => {
-          let blob;
-          let name;
-          if (binary) {
-            blob = new Blob([result], { type: 'model/gltf-binary' });
-            name = 'export.glb';
-          } else {
-            blob = new Blob([JSON.stringify(result)], { type: 'application/json' });
-            name = 'export.gltf';
-          }
-          this._downloadBlob(blob, name);
-          resolve(name);
-        }, { binary, onlyVisible: true });
-      } catch (err) {
-        reject(err);
-      }
-    });
-  }
-
-  exportSceneAsFormat(format = 'json') {
-    return new Promise((resolve, reject) => {
-      try {
-        if (format === 'json') {
-          const data = { objects: this.scene.children.map(c => ({ name: c.name })) };
-          const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-          const name = 'scene.json';
-          this._downloadBlob(blob, name);
-          return resolve(name);
-        }
-        // fallback route to exportSelectedModel for other formats
-        this.exportSelectedModel(format).then(resolve).catch(reject);
-      } catch (err) {
-        reject(err);
-      }
-    });
+    return this.exportSelectedModel(format);
   }
 
   // Minimal scene export used by UI save
@@ -253,42 +142,16 @@ export class ModelEditor {
     }
   }
 
-  // Helpers
+  // Helpers kept for backward compat but no longer used by import/export
   _finalizeImported(root, nameHint) {
-    // Normalise scale + floor + XZ-centre via the shared import helper.
-    // We skip face-camera here because ModelEditor does not own a camera;
-    // callers (with access to the active camera) can re-call
-    // normalizeImport(root, theirCamera) or use CameraManager.frameAtDistance.
-    const norm = normalizeImport(root, null, {
-      targetSize: 5,
-      faceCamera: false,
-    });
+    const norm = normalizeImport(root, null, { targetSize: 5, faceCamera: false });
     const wrapper = norm.wrapper;
     wrapper.name = nameHint || root.name || 'Imported';
     wrapper.userData.isImported = true;
-    if (norm.scaleFactor !== 1) wrapper.userData.importScaleFactor = norm.scaleFactor;
-
     this.scene.add(wrapper);
     this.objects.push(wrapper);
-    // auto-select imported wrapper when possible
     try { if (typeof this.selectObject === 'function') this.selectObject(wrapper); } catch (e) {}
     return { wrapper, ...norm };
-  }
-
-  _getSelectedOrScene() {
-    // Attempt to find a meaningful export target: selectedObject, else scene
-    if (this.selectedObject) return this.selectedObject;
-    return this.scene;
-  }
-
-  _downloadBlob(blob, filename) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
   // ── Selection API ──

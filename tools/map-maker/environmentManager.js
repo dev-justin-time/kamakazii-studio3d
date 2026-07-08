@@ -22,7 +22,19 @@ export class EnvironmentManager {
         });
         this.water = new THREE.Mesh(waterGeo, waterMat);
         this.water.rotation.x = -Math.PI / 2;
-        this.scene.add(this.water);
+        this.scene.add(this.water);        // Store original vertex positions for wave animation
+        const posArr = waterGeo.attributes.position.array;
+        this._waterOrigY = new Float32Array(posArr.length / 3);
+        for (let i = 0; i < this._waterOrigY.length; i++) {
+            this._waterOrigY[i] = posArr[i * 3 + 1];
+        }
+        this._waterVertexCount = this._waterOrigY.length;
+
+        // Day/night cycle state
+        this._timeOfDay = 0.5; // 0=midnight, 0.5=noon, 1=midnight
+        this._dayNightEnabled = false;
+        this._cachedSunLight = null;
+        this._cachedAmbientLights = [];
     }
 
     update(params) {
@@ -179,6 +191,99 @@ export class EnvironmentManager {
         this.scene.add(this.clouds);
     }
 
+    /**
+     * Set time of day (0=midnight, 0.5=noon, 1=midnight).
+     * Controls sun position, light color, sky tint, fog density.
+     */
+    setTimeOfDay(t) {
+        this._timeOfDay = Math.max(0, Math.min(1, t));
+        this._dayNightEnabled = true;
+        this._applyDayNight();
+    }
+
+    _applyDayNight() {
+        const t = this._timeOfDay;
+        // Sun elevation: peaks at noon (t=0.5), 0 at horizon (t=0 or t=1)
+        const sunAngle = Math.sin(t * Math.PI);
+        const sunHeight = Math.max(0, sunAngle);
+
+        // Light color: warm sunrise/sunset, white noon, blue moonlight
+        let r, g, b, intensity;
+        if (sunHeight > 0.1) {
+            // Daytime — lerp warm->white->warm
+            const warmth = 1 - Math.abs(t - 0.5) * 4; // peaks at noon
+            r = 1.0;
+            g = 0.85 + warmth * 0.15;
+            b = 0.6 + warmth * 0.4;
+            intensity = 0.5 + sunHeight * 0.8;
+        } else {
+            // Nighttime — dim blue
+            r = 0.2; g = 0.25; b = 0.4;
+            intensity = 0.15;
+        }
+
+        // Cache light references on first call to avoid scene.traverse every frame
+        if (!this._cachedSunLight) {
+            this._cachedSunLight = null;
+            this._cachedAmbientLights = [];
+            this.scene.traverse(child => {
+                if (child.isDirectionalLight && !this._cachedSunLight) {
+                    this._cachedSunLight = child;
+                }
+                if (child.isAmbientLight || child.isHemisphereLight) {
+                    this._cachedAmbientLights.push(child);
+                }
+            });
+        }
+
+        // Update cached directional sun light
+        if (this._cachedSunLight) {
+            this._cachedSunLight.color.setRGB(r, g, b);
+            this._cachedSunLight.intensity = intensity;
+            const angle = (t - 0.25) * Math.PI * 2;
+            this._cachedSunLight.position.set(
+                Math.cos(angle) * 100,
+                Math.sin(angle) * 100 + 20,
+                50
+            );
+        }
+
+        // Update cached ambient/hemisphere lights
+        for (const light of this._cachedAmbientLights) {
+            light.intensity = 0.2 + sunHeight * 0.4;
+        }
+
+        // Sky background color
+        if (sunHeight > 0.1) {
+            const skyR = 0.3 + sunHeight * 0.23;
+            const skyG = 0.5 + sunHeight * 0.32;
+            const skyB = 0.7 + sunHeight * 0.16;
+            this.scene.background = new THREE.Color(skyR, skyG, skyB);
+        } else {
+            this.scene.background = new THREE.Color(0x0a0a1a);
+        }
+
+        // Fog color matches sky
+        if (this.scene.fog) {
+            this.scene.fog.color.copy(this.scene.background);
+        }
+
+        // Water darkens at night — use waterBright to scale the base color
+        if (this.water && this.water.visible) {
+            const waterBright = 0.3 + sunHeight * 0.7;
+            // Darken the water color proportionally to sunlight
+            const baseColor = this.water.material.color;
+            // Store original water color on first use
+            if (!this._origWaterColor) {
+                this._origWaterColor = baseColor.clone();
+            }
+            baseColor.copy(this._origWaterColor).multiplyScalar(waterBright);
+            this.water.material.emissive = new THREE.Color(
+                0.0, 0.02 * sunHeight, 0.04 * sunHeight
+            );
+        }
+    }
+
     animate(time, camera, terrainHeight) {
         if (this.clouds && this.clouds.visible) {
             this.clouds.children.forEach(layer => {
@@ -192,14 +297,38 @@ export class EnvironmentManager {
             });
         }
 
+        // ── Wave-animated water with vertex displacement ──
         if (this.water && this.water.visible) {
             this.water.position.x = camera.position.x;
             this.water.position.z = camera.position.z;
-            // Optimized wave: Just drift the texture instead of updating thousands of vertices
+
+            // Animate water vertices with sine waves for realistic ripples
+            const geo = this.water.geometry;
+            const posArr = geo.attributes.position.array;
+            const t2 = time * 0.8;
+            for (let i = 0; i < this._waterVertexCount; i++) {
+                const ix = i * 3;
+                const x = posArr[ix];
+                const z = posArr[ix + 2];
+                // Multi-frequency wave displacement
+                const wave1 = Math.sin(x * 0.005 + t2) * 0.8;
+                const wave2 = Math.sin(z * 0.008 + t2 * 1.3) * 0.4;
+                const wave3 = Math.sin((x + z) * 0.012 + t2 * 0.7) * 0.2;
+                posArr[ix + 1] = this._waterOrigY[i] + wave1 + wave2 + wave3;
+            }
+            geo.attributes.position.needsUpdate = true;
+
+            // Texture drift for foam/detail
             if (this.water.material.map) {
                 this.water.material.map.offset.x = time * 0.02;
                 this.water.material.map.offset.y = time * 0.01;
             }
+        }
+
+        // ── Day/night cycle (auto-advance if enabled) ──
+        if (this._dayNightEnabled) {
+            this._timeOfDay = (this._timeOfDay + 0.00005) % 1.0;
+            this._applyDayNight();
         }
     }
 }

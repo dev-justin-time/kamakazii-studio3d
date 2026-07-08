@@ -3,9 +3,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
-import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { safeGetColor, safeCopyColor, safeSetHex, safeSetEmissive } from './material-helpers.js';
 import JSZip from 'jszip';
 // nipplejs is now used inside InputManager, not here directly
@@ -29,7 +26,7 @@ import { MarketplaceUI } from '../marketplace/marketplace-ui.js';
 
 // Import normalisation: scales + floor-aligns + centres + yaws imported models
 // so they always land on the floor at a sensible size facing the camera.
-import { normalizeImport, frameAtDistance } from '../editor/import-normalize.js';
+import { frameAtDistance } from '../editor/import-normalize.js';
 
 class ProModelerStudio {
     constructor() {
@@ -105,6 +102,7 @@ class ProModelerStudio {
         const draco = new DRACOLoader();
         draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
         this.gltfLoader.setDRACOLoader(draco);
+        this.modelIO = null; // Initialized in initializeImportExport()
         
         this.finishInit();
         this.setupAdvancedFeatures();
@@ -409,27 +407,39 @@ class ProModelerStudio {
     }
 
     initializeImportExport() {
+        // Import ModelIO for centralized format handling
+        const self = this;
+        this._modelIOReady = import('../editor/ModelIO.js').then(({ ModelIO }) => {
+            self.modelIO = new ModelIO({
+                scene: self.scene,
+                camera: self.camera,
+                renderer: self.renderer,
+                objects: self.objects,
+                pluginRegistry: self.pluginRegistry,
+                ui: self.ui,
+                selectedObject: null,
+                selectObject: (obj) => self.selectObject(obj),
+                frameAtDistance: (t, d, e, a) => self.frameAtDistance(t, d, e, a),
+                updateOutliner: () => self.ui.updateOutliner(),
+                gltfLoader: self.gltfLoader,
+            });
+            // Keep selectedObject reference live
+            Object.defineProperty(self.modelIO.ctx, 'selectedObject', {
+                get() { return self.selectedObject; },
+            });
+            return self.modelIO;
+        }).catch(err => { console.warn('[ModelIO] lazy init failed:', err); return null; });
+
         this.importExport = {
-            importModel: (source) => {
-                // Multi-file package
-                if (source && typeof source === 'object' && source.url && source.files) {
-                    return this.importGLTFMulti(source);
-                }
-                if (source instanceof File) {
-                    const ext = source.name.toLowerCase().split('.').pop();
-                    if (ext === 'gltf' || ext === 'glb') return this.importGLTF(source);
-                    this.ui.log(`Unsupported: ${ext}`, 'error');
-                    return;
-                }
-                if (typeof source === 'string') {
-                    return this.importGLTF(source);
-                }
-                this.ui.log('Unrecognized import source', 'error');
+            importModel: async (source) => {
+                await self._modelIOReady;
+                if (self.modelIO) return self.modelIO.importFile(source);
+                throw new Error('ModelIO failed to initialize');
             },
-            exportModel: (format, object) => {
-                if (format === 'gltf' || format === 'glb') this.exportGLTF(object, format === 'glb');
-                else if (format === 'obj') this.exportOBJ(object);
-                else if (format === 'stl') this.exportSTL(object);
+            exportModel: async (format, object) => {
+                await self._modelIOReady;
+                if (self.modelIO) return self.modelIO.exportAs(format, object);
+                throw new Error('ModelIO failed to initialize');
             },
             exportImage: (width, height) => {
                 const orig = this.renderer.getSize(new THREE.Vector2());
@@ -450,153 +460,27 @@ class ProModelerStudio {
         };
     }
 
-    importGLTF(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                this.gltfLoader.parse(e.target.result, '', (gltf) => {
-                    const root = gltf.scene || gltf.scenes[0];
-                    root.name = file.name.replace(/\.[^/.]+$/, '');
-
-                    // Normalize: scale to fit, floor-align, centre, face camera.
-                    // The wrapper holds the transforms; the GLTF root's own
-                    // rotation/scale (often a Z-up->Y-up conversion) stays
-                    // untouched to avoid model collapse.
-                    const norm = normalizeImport(root, this.camera, {
-                        targetSize: 5,
-                        faceCamera: true,
-                    });
-                    const wrapper = norm.wrapper;
-                    wrapper.name = root.name;
-
-                    this.scene.add(wrapper);
-                    this.objects.push(wrapper);
-                    this.selectObject(wrapper);
-                    this.ui.updateOutliner();
-
-                    // Always frame at the configured 10-unit / 35° viewpoint.
-                    const frameTarget = new THREE.Vector3(
-                        0,
-                        norm.bboxCenter.y,
-                        0
-                    );
-                    this.frameAtDistance(frameTarget, 10, 35, 25);
-                    this.updateNavCubeOrientation();
-
-                    this.ui.log(`Imported ${file.name} at ${norm.bboxSize.x.toFixed(2)}×${norm.bboxSize.y.toFixed(2)}×${norm.bboxSize.z.toFixed(2)}`, 'success');
-                    if (this.pluginRegistry) {
-                        this.pluginRegistry.emit('onImport', { source: file.name, object: wrapper });
-                    }
-                    resolve(wrapper);
-                }, (err) => {
-                    this.ui.log(err.message, 'error');
-                    reject(err);
-                });
-            };
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(file);
-        });
+    // Import/export delegated to ModelIO (initialized in initializeImportExport)
+    // Legacy method stubs for backward compat — delegate to modelIO when ready
+    async importGLTF(file) {
+        if (this.modelIO) return this.modelIO.importFile(file);
+        throw new Error('ModelIO not initialized');
     }
-
-    /** Import a multi-file glTF package (.gltf + .bin + textures) via URLModifier mapping */
-    importGLTFMulti(pkg) {
-        return new Promise((resolve, reject) => {
-            // Isolated manager so URLModifier doesn't leak to DefaultLoadingManager
-            const manager = new THREE.LoadingManager();
-            manager.setURLModifier((url) => {
-                const filename = url.split('/').pop().split('?')[0];
-                if (pkg.files[filename]) return pkg.files[filename];
-                if (url.startsWith('data:')) return url;
-                const decoded = decodeURIComponent(filename);
-                if (pkg.files[decoded]) return pkg.files[decoded];
-                return url;
-            });
-
-            const loader = new GLTFLoader(manager);
-            const draco = new DRACOLoader();
-            draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-            loader.setDRACOLoader(draco);
-
-            const nameHint = pkg.name || 'Imported';
-            const revokeAll = () => {
-                Object.values(pkg.files).forEach(u => URL.revokeObjectURL(u));
-            };
-
-            loader.load(pkg.url, (gltf) => {
-                const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-                root.name = nameHint.replace(/\.[^/.]+$/, '');
-                root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-
-                // Normalize then add the wrapper.
-                const norm = normalizeImport(root, this.camera, {
-                    targetSize: 5,
-                    faceCamera: true,
-                });
-                const wrapper = norm.wrapper;
-                wrapper.name = nameHint.replace(/\.[^/.]+$/, '');
-
-                this.scene.add(wrapper);
-                this.objects.push(wrapper);
-                this.selectObject(wrapper);
-                this.ui.updateOutliner();
-
-                const frameTarget = new THREE.Vector3(0, norm.bboxCenter.y, 0);
-                this.frameAtDistance(frameTarget, 10, 35, 25);
-                this.updateNavCubeOrientation();
-
-                this.ui.log(`Imported ${nameHint} (${Object.keys(pkg.files).length} files) at ${norm.bboxSize.x.toFixed(2)}×${norm.bboxSize.y.toFixed(2)}×${norm.bboxSize.z.toFixed(2)}`, 'success');
-                if (this.pluginRegistry) {
-                    this.pluginRegistry.emit('onImport', { source: pkg.name || nameHint, object: wrapper });
-                }
-                revokeAll();
-                resolve(wrapper);
-            }, undefined, (err) => {
-                this.ui.log(`Import failed: ${err.message}`, 'error');
-                revokeAll();
-                reject(err);
-            });
-        });
+    async importGLTFMulti(pkg) {
+        if (this.modelIO) return this.modelIO.importFile(pkg);
+        throw new Error('ModelIO not initialized');
     }
-
-    exportGLTF(object, binary) {
-        const exporter = new GLTFExporter();
-        exporter.parse(object || this.scene, (result) => {
-            const blob = new Blob([binary ? result : JSON.stringify(result)], { type: binary ? 'model/gltf-binary' : 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = binary ? 'export.glb' : 'export.gltf';
-            a.click();
-            this.ui.log('Exported GLTF', 'success');
-            if (this.pluginRegistry) {
-                this.pluginRegistry.emit('onExport', { format: binary ? 'glb' : 'gltf', object: object || this.scene });
-            }
-        }, { binary, onlyVisible: true });
+    async exportGLTF(object, binary) {
+        if (this.modelIO) return this.modelIO.exportAs(binary ? 'glb' : 'gltf', object);
+        throw new Error('ModelIO not initialized');
     }
-
-    exportOBJ(object) {
-        const exporter = new OBJExporter();
-        const data = exporter.parse(object || this.scene);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain' }));
-        a.download = 'export.obj';
-        a.click();
-        this.ui.log('Exported OBJ', 'success');
-        if (this.pluginRegistry) {
-            this.pluginRegistry.emit('onExport', { format: 'obj', object: object || this.scene });
-        }
+    async exportOBJ(object) {
+        if (this.modelIO) return this.modelIO.exportAs('obj', object);
+        throw new Error('ModelIO not initialized');
     }
-    
-    exportSTL(object) {
-        const exporter = new STLExporter();
-        const data = exporter.parse(object || this.scene);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([data], { type: 'application/sla' }));
-        a.download = 'export.stl';
-        a.click();
-        this.ui.log('Exported STL', 'success');
-        if (this.pluginRegistry) {
-            this.pluginRegistry.emit('onExport', { format: 'stl', object: object || this.scene });
-        }
+    async exportSTL(object) {
+        if (this.modelIO) return this.modelIO.exportAs('stl', object);
+        throw new Error('ModelIO not initialized');
     }
 
     initializeAdvancedLighting() {

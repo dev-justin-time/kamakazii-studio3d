@@ -81,6 +81,12 @@
                             <option value="alpine">Alpine Peaks</option>
                             <option value="landlocked">Landlocked</option>
                             <option value="atoll">Atoll</option>
+                            <option value="tundra">Tundra</option>
+                            <option value="rainforest">Rainforest</option>
+                            <option value="savanna">Savanna</option>
+                            <option value="badlands">Badlands</option>
+                            <option value="mesa">Mesa</option>
+                            <option value="fjord">Fjord</option>
                             <option value="custom">Custom (Upload)</option>
                         </select>
                     </div>
@@ -119,6 +125,18 @@
                     <div class="control-group">
                         <label>City Density: <span id="city-density-val">0.00</span></label>
                         <input type="range" id="city-density-slider" min="0" max="1.0" step="0.05" value="0.00">
+                    </div>
+                    <div class="control-group">
+                        <label>Erosion: <span id="erosion-val">0</span></label>
+                        <input type="range" id="erosion-slider" min="0" max="200" step="5" value="0">
+                    </div>
+                    <div class="control-group">
+                        <label>Time of Day: <span id="tod-val">0.50</span></label>
+                        <input type="range" id="tod-slider" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <div class="control-group checkbox-group">
+                        <input type="checkbox" id="daynight-toggle">
+                        <label for="daynight-toggle" style="cursor: pointer;">Auto Day/Night Cycle</label>
                     </div>
                 </div>
 
@@ -178,6 +196,14 @@
                             <option value="oak">Oak Tree</option>
                             <option value="palm">Palm Tree</option>
                             <option value="cactus">Cactus</option>
+                            <option value="birch">Birch</option>
+                            <option value="willow">Willow</option>
+                            <option value="redwood">Redwood</option>
+                            <option value="bamboo">Bamboo</option>
+                            <option value="bush">Bush</option>
+                            <option value="rock">Rock/Boulder</option>
+                            <option value="grassPatch">Grass Patch</option>
+                            <option value="flower">Flower</option>
                         </select>
                     </div>
                     <div class="control-group tool-prop" data-tools="city">

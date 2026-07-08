@@ -174,6 +174,37 @@ export class UIManager {
         elements['persistence-slider'].oninput = updateParam('persistence', 'falloff', true);
         document.getElementById('tree-density-slider').oninput = updateParam('treeDensity', 'treeDensity', true);
         elements['city-density-slider'].oninput = updateParam('cityDensity', 'cityDensity', true);
+
+        // Erosion slider — re-runs terrain generation with erosion passes
+        const erosionSlider = document.getElementById('erosion-slider');
+        const erosionVal = document.getElementById('erosion-val');
+        if (erosionSlider) {
+            erosionSlider.oninput = (e) => {
+                const val = parseInt(e.target.value);
+                app.terrainParams.erosion = val;
+                if (erosionVal) erosionVal.textContent = val;
+                app.generate(true);
+            };
+        }
+
+        // Time of Day slider
+        const todSlider = document.getElementById('tod-slider');
+        const todVal = document.getElementById('tod-val');
+        if (todSlider) {
+            todSlider.oninput = (e) => {
+                const val = parseFloat(e.target.value);
+                if (todVal) todVal.textContent = val.toFixed(2);
+                app.environmentManager.setTimeOfDay(val);
+            };
+        }
+
+        // Day/Night auto-cycle toggle
+        const dayNightToggle = document.getElementById('daynight-toggle');
+        if (dayNightToggle) {
+            dayNightToggle.onchange = (e) => {
+                app.environmentManager._dayNightEnabled = e.target.checked;
+            };
+        }
     }
 
     setupPlayerEvents() {
