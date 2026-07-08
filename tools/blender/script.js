@@ -708,7 +708,7 @@ export function init() {
 
     const canvas = document.getElementById('renderCanvas');
     renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, preserveDrawingBuffer: true }); 
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     viewportContainer = document.getElementById('viewport-container');
     renderer.setSize(viewportContainer.clientWidth, viewportContainer.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace; 

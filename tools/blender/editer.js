@@ -121,7 +121,7 @@ export function initializeUVSettings(
 
     uvCanvas = document.getElementById(canvasElementId);
     uvRenderer = new THREE.WebGLRenderer({ canvas: uvCanvas, antialias: true, alpha: true });
-    uvRenderer.setPixelRatio(window.devicePixelRatio);
+    uvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     uvRenderer.setClearColor(0x3a3a3a, 1);
 
     uvScene = new THREE.Scene();

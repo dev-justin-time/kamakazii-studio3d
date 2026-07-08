@@ -214,18 +214,231 @@ export class CloudSystem {
 
     /**
      * Import an asset that was downloaded from Puter FS (or other remote).
-     * This is a stub that can be expanded when the marketplace / asset
-     * storage pipeline is fully implemented.
+     * Reconstructs THREE geometry from the downloaded assetData and adds
+     * it to the scene. Supports:
+     *
+     * - **Bundle format** — `assetData.items[]` with k3dasset-style items
+     *   (geometry.parameters, material, position/rotation/scale)
+     * - **Voxel format** — `assetData.voxels[]` with { x, y, z, color }
+     * - **Single-item format** — a single item object with the same fields
+     *   as a bundle item, stored directly (not wrapped in `items: [...]`)
+     *
+     * Falls through to procedural generation if assetData is malformed,
+     * empty, or has no reconstructable geometry.
      */
     async _importPuterAsset(asset, assetData) {
-        console.log('[CloudSystem] Importing Puter FS asset:', asset.name, assetData);
-        // Future: reconstruct THREE geometry from assetData
-        // For now fall through to procedural generation
+        if (!assetData) {
+            console.warn('[CloudSystem] No asset data for', asset.name, '— falling back to procedural generation');
+            this._fallbackProcedural(asset);
+            return;
+        }
+
+        console.log('[CloudSystem] Importing Puter FS asset:', asset.name);
+
+        // ── Determine the format and collect items ──
+        const items = [];
+
+        if (Array.isArray(assetData.items) && assetData.items.length > 0) {
+            // Bundle/k3dasset format
+            items.push(...assetData.items);
+        } else if (Array.isArray(assetData.voxels) && assetData.voxels.length > 0) {
+            // Voxel data format — reconstruct from voxel definitions
+            this._reconstructVoxels(asset, assetData.voxels);
+            return;
+        } else if (assetData.type === 'mesh' || assetData.geometry) {
+            // Single-item format
+            items.push(assetData);
+        }
+
+        // ── Reconstruct mesh items ──
+        if (items.length > 0) {
+            const meshes = [];
+            for (const item of items) {
+                const mesh = this._reconstructMesh(item);
+                if (mesh) meshes.push(mesh);
+            }
+
+            if (meshes.length > 0) {
+                const group = new THREE.Group();
+                group.name = asset.name || 'Imported Asset';
+                meshes.forEach(m => group.add(m));
+
+                this.studio.scene.add(group);
+                this.studio.objects.push(group);
+                this.studio.selectObject(group);
+                this.studio.frameSelected();
+                this.studio.ui.updateOutliner();
+                this.studio.ui.log(`Imported "${group.name}" (${meshes.length} mesh${meshes.length !== 1 ? 'es' : ''})`, 'success');
+                return;
+            }
+        }
+
+        // ── Fallback: procedural generation ──
+        console.warn('[CloudSystem] No reconstructable geometry in asset data for', asset.name, '— using procedural fallback');
+        this._fallbackProcedural(asset);
+    }
+
+    /**
+     * Fall back to procedural generation for an asset.
+     */
+    _fallbackProcedural(asset) {
         if (asset.type === 'voxel') {
             this.generateVoxelAsset(asset.generator);
         } else {
             this.studio.handleMenuAction(asset.generator);
         }
+    }
+
+    /**
+     * Reconstruct a single THREE.Mesh from a bundle item's serialized data.
+     * Handles parametric geometries (Box, Sphere, Cylinder, Plane, Cone, Torus)
+     * and falls back to a small placeholder box.
+     */
+    _reconstructMesh(item) {
+        if (!item || item.type === 'group') return null;
+
+        // ── Geometry ──
+        let geometry = null;
+        if (item.geometry) {
+            geometry = this._parametricGeometry(item.geometry.parameters || item.geometry);
+        }
+        if (!geometry) {
+            geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+        }
+
+        // ── Material ──
+        const matData = Array.isArray(item.material) ? item.material[0] : item.material;
+        let material;
+        if (matData) {
+            material = new THREE.MeshStandardMaterial({
+                color: matData.color !== undefined ? matData.color : 0x60a5fa,
+                roughness: matData.roughness ?? 0.3,
+                metalness: matData.metalness ?? 0.1,
+                transparent: !!matData.transparent,
+                opacity: matData.opacity ?? 1,
+                wireframe: !!matData.wireframe,
+                emissive: matData.emissive ?? 0x000000,
+                emissiveIntensity: matData.emissiveIntensity ?? 0,
+            });
+        } else {
+            material = new THREE.MeshStandardMaterial({
+                color: 0x60a5fa,
+                roughness: 0.3,
+                metalness: 0.1,
+            });
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = item.name || 'Asset Part';
+        mesh.castShadow = item.castShadow !== false;
+        mesh.receiveShadow = item.receiveShadow !== false;
+
+        if (item.position) mesh.position.fromArray(Array.isArray(item.position) ? item.position : [0, 0, 0]);
+        if (item.rotation) mesh.rotation.fromArray(Array.isArray(item.rotation) ? item.rotation : [0, 0, 0]);
+        if (item.scale) mesh.scale.fromArray(Array.isArray(item.scale) ? item.scale : [1, 1, 1]);
+
+        return mesh;
+    }
+
+    /**
+     * Try to recreate a Three.js geometry from serialized parameters.
+     * Handles the standard parametric types exported by AssetBundler.
+     */
+    _parametricGeometry(params) {
+        if (!params || typeof params !== 'object') return null;
+        try {
+            // CylinderGeometry (radiusTop, radiusBottom, height, radialSegments)
+            if (params.radiusTop !== undefined) {
+                return new THREE.CylinderGeometry(
+                    params.radiusTop,
+                    params.radiusBottom ?? params.radiusTop,
+                    params.height ?? 1,
+                    params.radialSegments ?? 16,
+                    params.heightSegments ?? 1,
+                    !!params.openEnded
+                );
+            }
+            // SphereGeometry (radius, widthSegments, heightSegments)
+            if (params.radius !== undefined) {
+                return new THREE.SphereGeometry(
+                    params.radius,
+                    params.widthSegments ?? params.segments ?? 24,
+                    params.heightSegments ?? 18
+                );
+            }
+            // BoxGeometry (width, height, depth)
+            if (params.width !== undefined && params.height !== undefined && params.depth !== undefined) {
+                return new THREE.BoxGeometry(params.width, params.height, params.depth);
+            }
+            // PlaneGeometry (width, height)
+            if (params.width !== undefined && params.height !== undefined) {
+                return new THREE.PlaneGeometry(params.width, params.height);
+            }
+            // ConeGeometry (radius, height, radialSegments) — radiusTop is 0
+            if (params.radius !== undefined && params.height !== undefined && params.radiusTop === undefined) {
+                return new THREE.ConeGeometry(
+                    params.radius,
+                    params.height,
+                    params.radialSegments ?? 16
+                );
+            }
+            // TorusGeometry (radius, tube, radialSegments, tubularSegments)
+            if (params.radius !== undefined && params.tube !== undefined) {
+                return new THREE.TorusGeometry(
+                    params.radius,
+                    params.tube,
+                    params.radialSegments ?? 16,
+                    params.tubularSegments ?? 32
+                );
+            }
+        } catch (e) {
+            console.warn('[CloudSystem] _parametricGeometry failed:', e);
+        }
+        return null;
+    }
+
+    /**
+     * Reconstruct voxel geometry from an array of voxel definitions.
+     * Each voxel: { x, y, z, color } — creates a colored cube at that position.
+     */
+    _reconstructVoxels(asset, voxels) {
+        const group = new THREE.Group();
+        group.name = asset.name || 'Voxel Asset';
+
+        const voxelSize = 0.1;
+        const geometry = new THREE.BoxGeometry(voxelSize, voxelSize, voxelSize);
+        const materials = new Map();
+        const getMat = (color) => {
+            if (!materials.has(color)) {
+                materials.set(color, new THREE.MeshStandardMaterial({
+                    color: color,
+                    roughness: 0.5,
+                    metalness: 0.1,
+                }));
+            }
+            return materials.get(color);
+        };
+
+        for (const v of voxels) {
+            if (v.x === undefined || v.y === undefined || v.z === undefined) continue;
+            const mesh = new THREE.Mesh(geometry, getMat(v.color ?? 0xcccccc));
+            mesh.position.set(v.x * voxelSize, v.y * voxelSize, v.z * voxelSize);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            group.add(mesh);
+        }
+
+        if (group.children.length === 0) {
+            console.warn('[CloudSystem] No valid voxels in asset data for', asset.name);
+            this._fallbackProcedural(asset);
+            return;
+        }
+
+        this.studio.scene.add(group);
+        this.studio.objects.push(group);
+        this.studio.selectObject(group);
+        this.studio.ui.updateOutliner();
+        this.studio.ui.log(`Imported "${group.name}" (${group.children.length} voxels)`, 'success');
     }
 
     generateVoxelAsset(type) {

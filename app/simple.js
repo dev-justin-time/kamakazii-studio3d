@@ -20,7 +20,7 @@ camera.lookAt(0, 0, 0);
 const renderer = new THREE.WebGLRenderer({ canvas: getEl('renderCanvas','canvas'), antialias: true });
 const uiPanelWidth = getEl('ui-panel','div').offsetWidth || 0;
 renderer.setSize(window.innerWidth - uiPanelWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 // enable local clipping so per-material clippingPlanes used by slice feature work
 renderer.localClippingEnabled = true;
 
