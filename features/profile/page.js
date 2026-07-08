@@ -1,7 +1,7 @@
 /**
  * Profile — User preferences, display options, editor settings
  */
-function _getApp() { return window.ProModelerApp; }
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -144,5 +144,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

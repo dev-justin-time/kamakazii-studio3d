@@ -1,26 +1,7 @@
 /**
  * AI Tools — Custom prompts, response display, templates
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _addMessage(text, type) {
-  const container = document.querySelector('#popupContent [data-key="ai-responses"] .ctrl-label');
-  if (!container) return;
-  const msg = document.createElement('div');
-  msg.style.cssText = `padding:6px 10px;border-radius:4px;margin-bottom:4px;font-size:12px;line-height:1.5;${
-    type === 'user' ? 'background:#2a2a3a;color:#ccc;' :
-    type === 'ai' ? 'background:#1a2a3a;color:#8cf;' :
-    'background:#2a1a1a;color:#f88;'
-  }`;
-  msg.textContent = type === 'user' ? `🧑 ${text}` : type === 'ai' ? `🤖 ${text}` : `⚠️ ${text}`;
-  container.appendChild(msg);
-  container.scrollTop = container.scrollHeight;
-}
-
-function _clearResponses() {
-  const container = document.querySelector('#popupContent [data-key="ai-responses"] .ctrl-label');
-  if (container) container.innerHTML = '';
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -158,38 +139,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  // Inject a textarea for custom prompts and a response container
-  const textarea = document.createElement('textarea');
-  textarea.id = 'aiCustomInput';
-  textarea.placeholder = 'Type your custom AI prompt here...';
-  textarea.style.cssText = 'width:100%;min-height:60px;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#eee;font-size:12px;resize:vertical;box-sizing:border-box;';
-
-  const sysTextarea = document.createElement('textarea');
-  sysTextarea.id = 'aiCustomSystem';
-  sysTextarea.placeholder = 'Custom system prompt...';
-  sysTextarea.style.cssText = 'width:100%;min-height:50px;padding:8px;border-radius:4px;border:1px solid #444;background:#222;color:#eee;font-size:12px;resize:vertical;box-sizing:border-box;display:none;';
-  sysTextarea.addEventListener('input', () => { window.__aiCustomSystem = sysTextarea.value; });
-
-  // Style the response label to be a scrollable container
-  const respLabel = container.querySelector('[data-key="ai-responses"] .ctrl-label');
-  if (respLabel) {
-    respLabel.style.cssText = 'display:block;max-height:200px;overflow-y:auto;font-size:12px;line-height:1.5;padding:4px;background:#1a1a1a;border-radius:4px;border:1px solid #333;white-space:normal;';
-  }
-
-  container.appendChild(textarea);
-  container.appendChild(sysTextarea);
-
-  // Show/hide system textarea based on selection
-  const sysSelect = container.querySelector('[data-key="system-prompt"] select');
-  if (sysSelect) {
-    sysSelect.addEventListener('change', () => {
-      sysTextarea.style.display = sysSelect.value === 'custom' ? 'block' : 'none';
-    });
-  }
-
-  // Initial state for response container
-  const initialMsg = container.querySelector('[data-key="ai-responses"] .ctrl-label');
-  if (initialMsg) {
-    initialMsg.innerHTML = 'Responses will appear here...';
-  }
+  renderControls(container, meta.controls);
 }

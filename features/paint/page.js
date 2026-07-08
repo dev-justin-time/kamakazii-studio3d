@@ -1,16 +1,7 @@
 /**
  * Paint Tools — Vertex painting with raycaster, paint mode toggle, brush controls
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  const modeBtn = document.querySelector('#popupContent [data-key="paint-mode"] .ctrl-button');
-  if (modeBtn && app) {
-    modeBtn.textContent = app.isPaintMode ? '🎨 Painting... Click to Exit' : '🎨 Enter Paint Mode';
-    modeBtn.style.background = app.isPaintMode ? '#ef4444' : '#4a9eff';
-  }
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -132,5 +123,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

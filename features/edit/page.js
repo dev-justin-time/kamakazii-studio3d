@@ -1,6 +1,8 @@
 /**
  * Edit Tools — Duplicate, Delete, Mirror, Snap
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── Undo / Redo ──
@@ -43,4 +45,6 @@ const meta = {
 };
 
 export { meta };
-export function render(container, state) { container.innerHTML = ''; }
+export function render(container, state) {
+  renderControls(container, meta.controls);
+}

@@ -1,6 +1,8 @@
 /**
  * Lighting — Add, remove, and adjust lights. Color picker, intensity, shadow toggle, helpers.
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── Light Selector ──
@@ -144,24 +146,7 @@ const meta = {
   onApply: () => {},
 };
 
-/** Refresh the light selector dropdown and count label after add/remove */
-function _refreshLightUI() {
-  const app = window.ProModelerApp;
-  const sel = document.querySelector('#popupContent [data-key="light-select"] select');
-  if (sel && app?.lights) {
-    sel.innerHTML = app.lights.map((l, i) =>
-      `<option value="${i}">${l.name || l.type || 'Light'} [${i}]</option>`
-    ).join('');
-    sel.value = String(app.lights.length - 1);
-    window.__lightingSelectedIdx = app.lights.length - 1;
-  }
-  const label = document.querySelector('#popupContent [data-key="light-count"] .ctrl-label');
-  if (label) {
-    label.textContent = `Scene lights: ${app?.lights?.length ?? 0}`;
-  }
-}
-
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

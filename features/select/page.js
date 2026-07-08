@@ -1,6 +1,8 @@
 /**
  * Selection Tools — Transform modes, Snap, Frame
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── Transform Mode ──
@@ -41,4 +43,6 @@ const meta = {
 };
 
 export { meta };
-export function render(container, state) { container.innerHTML = ''; }
+export function render(container, state) {
+  renderControls(container, meta.controls);
+}

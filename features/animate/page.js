@@ -1,46 +1,7 @@
 /**
  * Animation — Timeline scrubber, frame stepping, speed control, loop toggle, keyframes
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  // Update frame number label
-  const frameLabel = document.querySelector('#popupContent [data-key="frame-label"] .ctrl-label');
-  if (frameLabel && app) {
-    const totalKfs = Array.from(app.keyframes.values()).reduce((sum, kfs) => sum + kfs.length, 0);
-    frameLabel.textContent = `Frame ${app.currentFrame} / ${app.totalFrames}  ·  ${totalKfs} keyframes total`;
-  }
-  // Update scrubber position
-  const scrubber = document.querySelector('#popupContent [data-key="timeline-scrub"] input');
-  if (scrubber && app) {
-    scrubber.value = app.currentFrame;
-  }
-  // Update selected object keyframe info
-  const selInfo = document.querySelector('#popupContent [data-key="sel-kf-info"] .ctrl-label');
-  if (selInfo && app) {
-    const obj = app.selectedObject;
-    if (obj && app.keyframes.has(obj.uuid)) {
-      const kfs = app.keyframes.get(obj.uuid);
-      selInfo.textContent = `\"${obj.name}\" has ${kfs.length} keyframe(s)`;
-    } else if (obj) {
-      selInfo.textContent = `\"${obj.name}\" has no keyframes`;
-    } else {
-      selInfo.textContent = 'No object selected — select an object to add keyframes';
-    }
-  }
-  // Update play/pause button
-  const playBtn = document.querySelector('#popupContent [data-key="play-pause"] .ctrl-button');
-  if (playBtn && app) {
-    playBtn.textContent = app.isAnimationPlaying ? '⏸ Pause' : '▶ Play';
-  }
-  // Update loop button
-  const loopBtn = document.querySelector('#popupContent [data-key="loop-toggle"] .ctrl-button');
-  if (loopBtn && app) {
-    loopBtn.textContent = app.loopAnimation ? '🔁 Loop ON' : '🔂 Loop OFF';
-    loopBtn.style.opacity = app.loopAnimation ? '1' : '0.5';
-  }
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -136,5 +97,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

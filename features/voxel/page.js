@@ -4,6 +4,8 @@
  * Stub page for the planned octree-based voxel system.
  * See FUTURE.md §2 for the full spec.
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     { key: 'info', type: 'label', label: 'Sparse octree voxel engine (planned).' },
@@ -23,4 +25,6 @@ const meta = {
 };
 
 export { meta };
-export function render(container, state) { container.innerHTML = ''; }
+export function render(container, state) {
+  renderControls(container, meta.controls);
+}

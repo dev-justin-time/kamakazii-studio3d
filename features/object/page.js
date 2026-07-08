@@ -2,6 +2,8 @@
  * Object Tools — Add Primitives, Duplicate, Delete, Transform, Frame
  * Wired to Studio API via window.ProModelerApp
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── Add Primitives ──
@@ -55,5 +57,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

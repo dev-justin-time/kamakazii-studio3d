@@ -1,25 +1,7 @@
 /**
  * Game Tools — Scene stats, LOD generation, collider helpers, optimization, export
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  // Update scene stats
-  const statsEl = document.querySelector('#popupContent [data-key="scene-stats"] .ctrl-label');
-  if (statsEl && app) {
-    const s = app.getSceneStats();
-    statsEl.textContent =
-      `Objects: ${s.objects} · Meshes: ${s.meshes} · Groups: ${s.groups} · Lights: ${s.lights}\n` +
-      `Vertices: ${s.vertices.toLocaleString()} · Faces: ${s.faces.toLocaleString()}`;
-    statsEl.style.whiteSpace = 'pre';
-  }
-  // Update collider toggle button
-  const collBtn = document.querySelector('#popupContent [data-key="colliders-toggle"] .ctrl-button');
-  if (collBtn && app) {
-    collBtn.textContent = app._showColliders ? '🟢 Colliders ON' : '🔴 Colliders OFF';
-  }
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -113,5 +95,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

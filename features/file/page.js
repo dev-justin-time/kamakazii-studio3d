@@ -2,6 +2,8 @@
  * File Operations — New, Open, Save, Import, Export
  * Wired to Studio API via window.ProModelerApp
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── New / Save / Open ──
@@ -77,6 +79,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  // Inline renderer for index.html compatibility
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

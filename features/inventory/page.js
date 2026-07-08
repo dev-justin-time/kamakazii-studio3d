@@ -1,61 +1,7 @@
 /**
  * Inventory — Detailed object info, material details, geometry stats, live refresh
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  const infoEl = document.querySelector('#popupContent [data-key="obj-info"] .ctrl-label');
-  if (!infoEl) return;
-
-  if (!app?.selectedObject) {
-    infoEl.textContent = 'No object selected. Click an object in the viewport first.';
-    return;
-  }
-
-  const info = app.getObjectInfo();
-  if (!info || info.message) {
-    infoEl.textContent = info?.message || 'No info available';
-    return;
-  }
-
-  const lines = [
-    `📦 ${info.name} (${info.type})`,
-    `━━━━━━━━━━━━━━━━━━`,
-    `Position: ${info.position.join(', ')}`,
-    `Rotation: ${info.rotation.join(', ')}`,
-    `Scale: ${info.scale.join(', ')}`,
-  ];
-
-  if (info.geometry) {
-    lines.push(`━━━━━━━━━━━━━━━━━━`);
-    lines.push(`Geometry: ${info.geometry}`);
-    lines.push(`Vertices: ${info.vertices}`);
-    lines.push(`Faces: ${Math.round(info.faces)}`);
-    lines.push(`UVs: ${info.uvs ? 'Yes' : 'No'}`);
-    lines.push(`Vertex Colors: ${info.vertexColors ? 'Yes' : 'No'}`);
-  }
-
-  if (info.material) {
-    const m = info.material;
-    lines.push(`━━━━━━━━━━━━━━━━━━`);
-    lines.push(`Material: ${m.type}`);
-    lines.push(`Color: ${m.color}`);
-    lines.push(`Metalness: ${m.metalness}`);
-    lines.push(`Roughness: ${m.roughness}`);
-    lines.push(`Wireframe: ${m.wireframe ? 'On' : 'Off'}`);
-    lines.push(`Transparent: ${m.transparent ? 'Yes' : 'No'}`);
-  }
-
-  lines.push(`━━━━━━━━━━━━━━━━━━`);
-  lines.push(`Children (visible): ${info.children}`);
-  lines.push(`UUID: ${info.uuid}`);
-
-  infoEl.textContent = lines.join('\n');
-  infoEl.style.whiteSpace = 'pre';
-  infoEl.style.fontSize = '11px';
-  infoEl.style.lineHeight = '1.6';
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -127,5 +73,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

@@ -19,6 +19,9 @@ import { UIManager } from './UIManager.js';
 import { InputManager } from './modules/InputManager.js';
 import { AudioSystem } from './modules/AudioSystem.js';
 import { CloudSystem } from './modules/CloudSystem.js';
+import { ParticleSystem } from '../systems/ParticleSystem.js';
+import { WeatherSystem } from '../systems/WeatherSystem.js';
+import { WaterSystem } from '../systems/WaterSystem.js';
 
 // Import Marketplace
 import { MarketplaceAPI, PluginRegistry } from '../marketplace/index.js';
@@ -78,6 +81,12 @@ class ProModelerStudio {
         this.vertexPaintSystem = new VertexPaintSystem(this);
         this.audioSystem = new AudioSystem(this);
         this.cloudSystem = new CloudSystem(this);
+
+        // VFX systems
+        this.particleSystem = new ParticleSystem(this);
+        this.weatherSystem = new WeatherSystem(this);
+        this.waterSystem = new WaterSystem(this);
+        this._animateClock = new THREE.Clock();
         
         this.volumetricFog = null;
         this.textureLibrary = new Map();
@@ -109,7 +118,11 @@ class ProModelerStudio {
         
         // Initialize Input Manager explicitly
         if (this.inputManager) this.inputManager.init();
-        
+
+        // Reset the frame clock now that init is done, so the first
+        // getDelta() in animate() returns a real frame delta, not
+        // accumulated init time.
+        this._animateClock.start();
         this.animate();
     }
 
@@ -1159,7 +1172,14 @@ class ProModelerStudio {
                 this.physicsSystem.setEnabled(!this.physicsSystem.enabled);
                 this.ui.log(`Physics ${this.physicsSystem.enabled ? 'Enabled' : 'Disabled'}`, 'info');
                 break;
-            case 'particles': this.ui.log('Particles system pending', 'warning'); break;
+            case 'particles': {
+                const pos = this.selectedObject
+                    ? this.selectedObject.position.clone().add(new THREE.Vector3(0, 1, 0))
+                    : new THREE.Vector3(0, 1, 0);
+                const emitter = this.particleSystem.emit('fire', pos);
+                this.ui.log(`Fire particles emitting at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`, 'success');
+                break;
+            }
             case 'save': this.saveProject(); break;
             case 'new': this.newProject(); break;
             case 'import': document.getElementById('modelImport')?.click(); break;
@@ -1300,19 +1320,28 @@ class ProModelerStudio {
     
     animate() {
         requestAnimationFrame(() => this.animate());
+
+        // Compute real delta once per frame
+        const dt = this._animateClock.getDelta();
+        const elapsed = this._animateClock.elapsedTime;
+
         this.controls.update();
         if (this.performanceProfiler) this.performanceProfiler.update();
         if (this.physicsSystem && this.physicsSystem.enabled) {
-            this.physicsSystem.update(0.016);
+            this.physicsSystem.update(dt);
             if (this.pluginRegistry) {
-                this.pluginRegistry.emit('onPhysicsStep', { delta: 0.016 });
+                this.pluginRegistry.emit('onPhysicsStep', { delta: dt });
             }
         }
         if (this.audioSystem) this.audioSystem.update();
+
+        // VFX systems — advance each frame
+        if (this.particleSystem) this.particleSystem.update(dt);
+        if (this.weatherSystem) this.weatherSystem.update(dt, this.camera);
+        if (this.waterSystem) this.waterSystem.update(elapsed, this.camera);
         
         // WASD & Joystick via InputManager
         if (this.inputManager) {
-            const dt = 0.016;
             const dir = new THREE.Vector3(); 
             this.camera.getWorldDirection(dir); 
             

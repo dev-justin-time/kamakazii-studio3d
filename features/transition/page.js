@@ -1,15 +1,7 @@
 /**
  * Transitions — Easing curves applied to keyframe interpolation, morph targets, tween
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  const easingInfo = document.querySelector('#popupContent [data-key="easing-info"] .ctrl-label');
-  if (easingInfo && app) {
-    easingInfo.textContent = `Active easing: ${app._currentEasing || 'linear'}`;
-  }
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -133,5 +125,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

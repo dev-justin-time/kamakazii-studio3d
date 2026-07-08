@@ -1,21 +1,7 @@
 /**
  * Motion Capture — Record, import/export animation data, retarget
  */
-function _getApp() { return window.ProModelerApp; }
-
-function _refreshUI() {
-  const app = _getApp();
-  const recBtn = document.querySelector('#popupContent [data-key="record-toggle"] .ctrl-button');
-  if (recBtn && app) {
-    recBtn.textContent = app.isRecording ? '⏹ Stop Recording' : '⏺ Record Animation';
-    recBtn.style.background = app.isRecording ? '#ef4444' : '#4a9eff';
-  }
-  const info = document.querySelector('#popupContent [data-key="mocap-info"] .ctrl-label');
-  if (info && app) {
-    const totalKfs = Array.from(app.keyframes.values()).reduce((s, kfs) => s + kfs.length, 0);
-    info.textContent = `Keyframes: ${totalKfs} across ${app.keyframes.size} object(s)`;
-  }
-}
+import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
   controls: [
@@ -144,5 +130,5 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  container.innerHTML = '';
+  renderControls(container, meta.controls);
 }

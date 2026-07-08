@@ -335,7 +335,10 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
   // The factory returns `{ plane, propeller }` (was just `plane` before the
   // HUD-lock refactor) — the propeller is re-parented to `scene` below so
   // its world position is fully decoupled from plane yaw/pitch/bank.
-  const placeholder = { x: 0, y: 2, z: 0 };
+  // Initial spawn matches state.target default and resetGame() respawn.
+  const PLANE_SPAWN_X = 0;
+  const PLANE_SPAWN_Y = 2;
+  const PLANE_SPAWN_Z = 0;
   let plane = null, propeller = null;
   try {
     if (planeModelUrl && typeof planeModelUrl === 'string') {
@@ -352,7 +355,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     propeller = built.propeller;
     plane.scale.set(3, 3, 3);
   }
-  plane.position.set(placeholder.x, placeholder.y, placeholder.z);
+  plane.position.set(PLANE_SPAWN_X, PLANE_SPAWN_Y, PLANE_SPAWN_Z);
   if (plane.rotation) plane.rotation.y += Math.PI;
   plane.traverse(n => { if (n.isMesh) { n.castShadow = true; n.receiveShadow = true; } });
   scene.add(plane);
@@ -405,7 +408,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     baseSpeed: TUNING.BASE_SPEED,
     spawnTimer: 0,
     spawnInterval: TUNING.SPAWN_INTERVAL,
-    target: { x: 0, y: 2 },
+    target: { x: PLANE_SPAWN_X, y: PLANE_SPAWN_Y },
     best: Number(localStorage.getItem('kamikazziHiScore') || 0),
     startTimeMs: 0,
     timeElapsedMs: 0,
@@ -950,8 +953,8 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     state.speed = TUNING.SPEED_PER_LEVEL[0];
     state.spawnTimer = 0;
     state.spawnInterval = TUNING.SPAWN_INTERVAL;
-    state.target.x = 0;
-    state.target.y = 2;
+    state.target.x = PLANE_SPAWN_X;
+    state.target.y = PLANE_SPAWN_Y;
     state.startTimeMs = performance.now();
     state.timeElapsedMs = 0;
     state.impactAlt = 0;
@@ -968,7 +971,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     state.timeScaleUntilMs = 0;
     state.lastNearMissByBuilding = new Map();
 
-    plane.position.set(0, 2, 0);
+    plane.position.set(PLANE_SPAWN_X, PLANE_SPAWN_Y, PLANE_SPAWN_Z);
     // plane.rotation.y = Math.PI makes the plane face -Z (the direction of
     // motion — the camera looks in -Z, level bands drift in -Z). Without this
     // every reset zeroed rotation and the procedural plane (nose drawn at

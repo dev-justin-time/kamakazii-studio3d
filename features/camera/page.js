@@ -1,6 +1,8 @@
 /**
  * Camera Tools — Preset views, frame, camera management
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     // ── Preset Views ──
@@ -19,4 +21,6 @@ const meta = {
 };
 
 export { meta };
-export function render(container, state) { container.innerHTML = ''; }
+export function render(container, state) {
+  renderControls(container, meta.controls);
+}

@@ -1,6 +1,8 @@
 /**
  * Texture Tools — Material presets, color picker, metallic/roughness
  */
+import { renderControls } from '../_shared/renderControls.js';
+
 const meta = {
   controls: [
     { key: 'sep-mats', label: 'Material Presets', type: 'label' },
@@ -63,4 +65,6 @@ const meta = {
 };
 
 export { meta };
-export function render(container, state) { container.innerHTML = ''; }
+export function render(container, state) {
+  renderControls(container, meta.controls);
+}
