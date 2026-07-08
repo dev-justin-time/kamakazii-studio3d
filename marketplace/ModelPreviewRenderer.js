@@ -236,6 +236,8 @@ export class ModelPreviewRenderer {
    * Reconstruct a simple Three.js mesh from serialized item data.
    * Since bundle data stores parameters rather than raw geometry,
    * we create parametric geometries where possible.
+   * Falls back to a seed-derived procedural shape so previews
+   * are never just a boring box.
    */
   _reconstructMesh(item) {
     if (!item || item.type !== 'mesh') return null;
@@ -248,9 +250,12 @@ export class ModelPreviewRenderer {
       geometry = this._parametricGeometry(params);
     }
 
-    // Fallback: create a placeholder mesh
+    // Fallback: generate a distinctive seed-derived shape so
+    // every preview looks unique — no boring placeholder boxes
     if (!geometry) {
-      geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+      // Derive a deterministic seed from the item name or hash of its indices
+      const seedStr = item.name || '' + (item.position?.join?.('') || '');
+      geometry = this._generateFallbackGeometry(seedStr);
     }
 
     // Build material
@@ -805,11 +810,38 @@ export class ModelPreviewRenderer {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.modelGroup.add(mesh);
+  }/**
+ * Generate a distinctive geometry from a seed string.
+ * Uses a hash of the string to select from 7 geometry types,
+ * so every product gets a unique (but deterministic) shape.
+ */
+  _generateFallbackGeometry(seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const absHash = Math.abs(hash);
+    const type = absHash % 7;
+    const s = 0.4 + (absHash % 5) * 0.05; // slight size variety
+
+    try {
+      switch (type) {
+        case 0: return new THREE.IcosahedronGeometry(s, 0);
+        case 1: return new THREE.DodecahedronGeometry(s, 0);
+        case 2: return new THREE.OctahedronGeometry(s, 0);
+        case 3: return new THREE.TetrahedronGeometry(s, 0);
+        case 4: return new THREE.TorusKnotGeometry(s * 0.8, s * 0.25, 48, 8);
+        case 5: return new THREE.ConeGeometry(s, s * 1.2, 3 + (absHash % 5));
+        case 6: return new THREE.TorusGeometry(s * 0.7, s * 0.3, 12, 24);
+      }
+    } catch (_) {}
+    return new THREE.IcosahedronGeometry(0.5, 0); // ultimate fallback
   }
 
   /**
-   * Linear interpolate between two hex colors
-   */
+ * Linear interpolate between two hex colors
+ */
   _lerpColor(color1, color2, t) {
     const c1 = new THREE.Color(color1);
     const c2 = new THREE.Color(color2);

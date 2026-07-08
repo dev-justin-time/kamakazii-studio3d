@@ -110,7 +110,25 @@ class WeatherEffect {
 }
 
 /**
+ * Default volumetric fog mappings for each weather preset.
+ * These map weather types to raymarched volumetric fog parameters.
+ * Densities here are tuned for the depth-aware raymarch shader
+ * (different scale from THREE.FogExp2).
+ */
+const VOLUMETRIC_FOG_PRESETS = {
+  fog:       { density: 0.04,  color: 0x888888, heightFalloff: 0.12, lightShaftStrength: 0.3 },
+  clouds:    { density: 0.015, color: 0xaaaaaa, heightFalloff: 0.08, lightShaftStrength: 0.6 },
+  rain:      { density: 0.03,  color: 0x445566, heightFalloff: 0.15, lightShaftStrength: 0.2 },
+  snow:      { density: 0.02,  color: 0xccccdd, heightFalloff: 0.10, lightShaftStrength: 0.4 },
+  sandstorm: { density: 0.06,  color: 0xcc8844, heightFalloff: 0.20, lightShaftStrength: 0.1 },
+};
+
+/**
  * WeatherSystem — manages weather effects, fog, and atmospheric settings.
+ *
+ * When the volumetric fog system is available (via this.studio.volumetricFog),
+ * the 'fog' and 'clouds' presets (and the fog components of rain/snow/sandstorm)
+ * use the raymarched depth-aware shader instead of basic THREE.FogExp2.
  */
 export class WeatherSystem {
   constructor(studio) {
@@ -119,6 +137,8 @@ export class WeatherSystem {
     this.fog = null;
     this._originalFog = null;
     this._originalBackground = null;
+    /** Tracks whether volumetric fog was activated by the weather system */
+    this._volumetricEnabled = false;
   }
 
   /**
@@ -130,7 +150,7 @@ export class WeatherSystem {
     const scene = this.studio?.scene;
     if (!scene) return;
 
-    // Clean up previous effect
+    // Clean up previous effect (including volumetric fog)
     this.clear();
 
     // Store original state
@@ -145,7 +165,7 @@ export class WeatherSystem {
           count: Math.floor(3000 * intensity),
           speed: 12 * intensity,
         });
-        scene.fog = new THREE.FogExp2(0x334455, 0.008 * intensity);
+        this._enableVolumetricFog('rain', intensity, opts);
         break;
       }
       case 'snow': {
@@ -153,18 +173,26 @@ export class WeatherSystem {
           count: Math.floor(2000 * intensity),
           speed: 1.5 + intensity,
         });
-        scene.fog = new THREE.FogExp2(0xaaaacc, 0.005 * intensity);
+        this._enableVolumetricFog('snow', intensity, opts);
         break;
       }
       case 'fog': {
+        // Use raymarched volumetric fog instead of basic FogExp2
         const fogColor = opts.fogColor ? new THREE.Color(opts.fogColor) : new THREE.Color(0x888888);
-        const density = opts.fogDensity ?? 0.02 * intensity;
-        scene.fog = new THREE.FogExp2(fogColor, density);
+        const density = opts.fogDensity ?? 0.04 * intensity;
+        this._enableVolumetricFog('fog', intensity, {
+          ...opts,
+          fogColor: fogColor.getHex(),
+          overrideDensity: density,
+        });
+        // Clear any basic fog that the THREE.Fog API object might have set
+        scene.fog = null;
         break;
       }
       case 'clouds': {
-        // Volumetric cloud effect — layered fog + soft particle clusters
-        scene.fog = new THREE.FogExp2(0x999999, 0.003 * intensity);
+        // Volumetric cloud effect uses layered volumetric fog + sky backdrop
+        this._enableVolumetricFog('clouds', intensity, opts);
+        scene.fog = null;
         scene.background = new THREE.Color(0x8899aa);
         break;
       }
@@ -173,15 +201,71 @@ export class WeatherSystem {
           count: Math.floor(4000 * intensity),
           speed: 8 * intensity,
         });
-        scene.fog = new THREE.FogExp2(0xaa8844, 0.015 * intensity);
+        this._enableVolumetricFog('sandstorm', intensity, opts);
         break;
       }
       case 'clear':
       default: {
-        // Already cleared above
+        // Already cleared above (including volumetric fog)
         break;
       }
     }
+  }
+
+  /**
+   * Activate raymarched volumetric fog for the given weather preset.
+   * Falls back silently to the old FogExp2 approach if the engine hasn't
+   * loaded the VolumetricFog module yet (this is safe for early frames).
+   */
+  _enableVolumetricFog(preset, intensity, opts) {
+    const vf = this.studio?.volumetricFog;
+    if (!vf) {
+      // VolumetricFog not yet loaded — fall back to basic FogExp2
+      console.warn('[WeatherSystem] VolumetricFog not available, using basic FogExp2');
+      const fallback = this._getFogExp2Fallback(preset, intensity, opts);
+      if (fallback && this.studio?.scene) {
+        this.studio.scene.fog = fallback;
+      }
+      return;
+    }
+
+    const p = VOLUMETRIC_FOG_PRESETS[preset];
+    if (!p) return;
+
+    // Apply preset defaults scaled by intensity
+    const density   = opts.overrideDensity ?? (p.density * intensity);
+    const fogColor  = opts.fogColor ?? p.color;
+    const heightFO  = opts.heightFalloff ?? p.heightFalloff;
+    const shaftStr  = opts.lightShaftStrength ?? p.lightShaftStrength;
+
+    // Pass all params via the setParam API
+    vf.setParam('density', density);
+    vf.setParam('color', fogColor);
+    vf.setParam('heightFalloff', heightFO);
+    vf.setParam('lightShaftStrength', shaftStr);
+
+    // Activate (calls enable() on the underlying VolumetricFog instance)
+    vf.create();
+    this._volumetricEnabled = true;
+  }
+
+  /**
+   * Build a basic THREE.FogExp2 as a fallback when volumetric fog is unavailable.
+   * Returns null for presets that have no fog component.
+   */
+  _getFogExp2Fallback(preset, intensity, opts) {
+    const map = {
+      fog:       { c: 0x888888, d: 0.02 },
+      clouds:    { c: 0x999999, d: 0.003 },
+      rain:      { c: 0x334455, d: 0.008 },
+      snow:      { c: 0xaaaacc, d: 0.005 },
+      sandstorm: { c: 0xaa8844, d: 0.015 },
+    };
+    const fb = map[preset];
+    if (!fb) return null;
+    const color = opts.fogColor ?? fb.c;
+    const density = opts.fogDensity ?? (fb.d * intensity);
+    return new THREE.FogExp2(color, density);
   }
 
   /**
@@ -197,16 +281,31 @@ export class WeatherSystem {
 
   /**
    * Clear all weather effects and restore original fog/background.
+   * Also disables volumetric fog if it was activated by the weather system.
    */
   clear() {
+    // Dispose particle effect
     if (this.currentEffect) {
       this.currentEffect.dispose();
       this.currentEffect = null;
     }
+
+    // Disable volumetric fog if we enabled it
+    if (this._volumetricEnabled) {
+      this._volumetricEnabled = false;
+      const vf = this.studio?.volumetricFog;
+      if (vf && typeof vf.remove === 'function') {
+        vf.remove();
+      }
+    }
+
+    // Restore original scene fog/background
     const scene = this.studio?.scene;
     if (scene) {
       scene.fog = this._originalFog || null;
-      if (this._originalBackground) scene.background = this._originalBackground;
+      if (this._originalBackground) {
+        scene.background = this._originalBackground;
+      }
     }
   }
 

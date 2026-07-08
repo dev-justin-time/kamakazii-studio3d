@@ -57,7 +57,6 @@ class ProModelerStudio {
         this.currentFrame = 1;
         this.totalFrames = 250;
         this.keyframes = new Map();
-        this.plugins = new Map();
         this.sculptMode = false;
         this.sculptBrush = {
             size: 1.0,
@@ -93,6 +92,7 @@ class ProModelerStudio {
         this._animateClock = new THREE.Clock();
         
         this.volumetricFog = null;
+        this._fogSunLight = null;
         this.textureLibrary = new Map();
         this.hdriLibrary = new Map();
         this.cameraManager = null;
@@ -105,8 +105,6 @@ class ProModelerStudio {
         this._marketplaceInited = false;
         this.pluginRegistry = null;
         this.morphTargets = null;
-        this.audioReactive = null;
-        
         this.moveSpeed = 3.0;
         this.isTransforming = false;
         this.lastTransformEnd = 0;
@@ -296,7 +294,6 @@ class ProModelerStudio {
     }
 
     setupAdvancedFeatures() {
-        this.setupAdvancedRaycasting();
         this.nodeEditorSystem.init();
         this.setupAdvancedMaterials();
         this.initializeAnimationSystem();
@@ -339,7 +336,22 @@ class ProModelerStudio {
                 heightFalloff: 0.15,
                 noiseScale: 0.4,
                 noiseStrength: 0.25,
+                lightShaftStrength: 0.5,
+                sunColor: 0xffeedd,
             });
+
+            // Derive sun direction from the scene's main directional light
+            // (the first DirectionalLight in this.lights).
+            const dirLight = self.lights.find(l => l.isDirectionalLight);
+            if (dirLight) {
+                fog.setSunFromLight(dirLight);
+                // Update the fog's sun direction each frame so orbiting lights work
+                self._fogSunLight = dirLight;
+            } else {
+                // Fallback: overhead sun
+                fog.setSunPosition(new THREE.Vector3(50, 80, 30));
+            }
+
             self._volumetricFogInstance = fog;
             return fog;
         }).catch(err => {
@@ -352,6 +364,8 @@ class ProModelerStudio {
             enabled: false,
             density: 0.08,
             color: new THREE.Color(0x8899aa),
+            lightShaftStrength: 0.5,
+            sunColor: new THREE.Color(0xffeedd),
 
             /** Activate true raymarched volumetric fog */
             create: async () => {
@@ -390,11 +404,21 @@ class ProModelerStudio {
             setParam: async (key, value) => {
                 self.volumetricFog[key] = value;
                 if (key === 'color') self.volumetricFog.color = new THREE.Color(value);
+                if (key === 'sunColor') self.volumetricFog.sunColor = new THREE.Color(value);
                 if (self._volumetricFogInstance && self._volumetricFogInstance.enabled) {
                     const fog = await self._volumetricFogReady;
                     if (fog) {
-                        fog[key] = value;
-                        if (key === 'color') fog.color.copy(self.volumetricFog.color);
+                        if (key === 'color') {
+                            fog.color.copy(self.volumetricFog.color);
+                        } else if (key === 'sunColor') {
+                            fog.setSunColor(self.volumetricFog.sunColor);
+                        } else if (key === 'sunDirection') {
+                            fog.setSunDirection(value);
+                        } else if (key === 'lightShaftStrength') {
+                            fog.lightShaftStrength = value;
+                        } else {
+                            fog[key] = value;
+                        }
                     }
                 }
             },
@@ -862,10 +886,6 @@ class ProModelerStudio {
         };
     }
 
-    setupAdvancedRaycasting() {
-        // Moved to InputManager
-    }
-
     getSelectableFromObject(object) {
         let o = object;
         while (o && !o.isMesh) o = o.parent;
@@ -1040,8 +1060,6 @@ class ProModelerStudio {
     }
 
     initializePluginSystem() {
-        this.plugins.set('auto-retopology', { execute: () => this.ui.log('Retopology simulated', 'success') });
-
         // Eagerly initialize PluginRegistry so all hook emissions are live
         // from the start, even before the marketplace tab is first clicked.
         this.pluginRegistry = new PluginRegistry(this);
@@ -1485,6 +1503,11 @@ class ProModelerStudio {
         if (this.particleSystem) this.particleSystem.update(dt);
         if (this.weatherSystem) this.weatherSystem.update(dt, this.camera);
         if (this.waterSystem) this.waterSystem.update(elapsed, this.camera);
+
+        // Sync fog sun direction from the scene's directional light each frame
+        if (this._volumetricFogInstance && this._volumetricFogInstance.enabled && this._fogSunLight) {
+            this._volumetricFogInstance.setSunFromLight(this._fogSunLight);
+        }
         
         // WASD & Joystick via InputManager
         if (this.inputManager) {

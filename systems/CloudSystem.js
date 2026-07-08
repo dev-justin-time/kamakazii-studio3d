@@ -1,6 +1,76 @@
 import * as THREE from 'three';
 import { kv, fs, isPuterAvailable } from '../app/puter-client.js';
 
+// Lazy-loaded format loaders — only resolved when needed
+let _gltfLoader = null;
+let _objLoader = null;
+let _stlLoader = null;
+let _plyLoader = null;
+let _fbxLoader = null;
+
+async function _getLoader(format) {
+  switch (format) {
+    case 'gltf':
+    case 'glb': {
+      if (!_gltfLoader) {
+        const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+        const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
+        _gltfLoader = new GLTFLoader();
+        const draco = new DRACOLoader();
+        draco.setDecoderPath(DRACO_DECODER_URL);
+        _gltfLoader.setDRACOLoader(draco);
+      }
+      return _gltfLoader;
+    }
+    case 'obj': {
+      if (!_objLoader) {
+        const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
+        _objLoader = new OBJLoader();
+      }
+      return _objLoader;
+    }
+    case 'stl': {
+      if (!_stlLoader) {
+        const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
+        _stlLoader = new STLLoader();
+      }
+      return _stlLoader;
+    }
+    case 'ply': {
+      if (!_plyLoader) {
+        const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
+        _plyLoader = new PLYLoader();
+      }
+      return _plyLoader;
+    }
+    case 'fbx': {
+      if (!_fbxLoader) {
+        const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js');
+        _fbxLoader = new FBXLoader();
+      }
+      return _fbxLoader;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Supported 3D file formats for Puter FS import.
+ * Order matters: checked first = preferred.
+ */
+const SUPPORTED_FORMATS = [
+  { ext: 'glb',  type: 'gltf' },
+  { ext: 'gltf', type: 'gltf' },
+  { ext: 'obj',  type: 'obj'  },
+  { ext: 'stl',  type: 'stl'  },
+  { ext: 'ply',  type: 'ply'  },
+  { ext: 'fbx',  type: 'fbx'  },
+];
+
+/** DRACO decoder version for compressed glTF — bump when Three.js bundle updates */
+const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/';
+
 // ── KV key for asset catalog ──
 const KV_CATALOG_KEY = 'cloud_asset_catalog';
 const KV_SEEDED_KEY = 'cloud_asset_seeded';
@@ -166,8 +236,25 @@ export class CloudSystem {
 
         console.log(`[CloudSystem] Importing ${asset.name} (${asset.type})...`);
 
-        // 1. Try to load from Puter FS (actual downloaded asset data)
+        // 1. Try to load from Puter FS: prefer native 3D file formats (glTF, OBJ, STL, PLY, FBX)
+        //    over JSON parametric data. This is the "real 3D asset" pipeline.
         if (isPuterAvailable()) {
+            // 1a. Try native 3D model formats first (glTF/GLB/OBJ/STL/PLY/FBX)
+            //     Reads each file once — if it succeeds, the blob is passed directly
+            //     to the import function to avoid double-downloading large models.
+            for (const fmt of SUPPORTED_FORMATS) {
+                const fsPath = `CloudAssets/${asset.id}.${fmt.ext}`;
+                try {
+                    const blob = await fs.read(fsPath); // throws if file doesn't exist
+                    console.log(`[CloudSystem] Found ${fmt.ext} asset (${(blob.size / 1024).toFixed(1)} KB) at ${fsPath}`);
+                    const imported = await this._importModelAsset(asset, fsPath, fmt.type, blob);
+                    if (imported) return asset;
+                } catch (_) {
+                    // File doesn't exist or can't be read in this format — try next
+                }
+            }
+
+            // 1b. Fall back to JSON bundle data (parametric geometry)
             const fsPath = `CloudAssets/${asset.id}.json`;
             try {
                 const raw = await fs.readText(fsPath);
@@ -177,7 +264,7 @@ export class CloudSystem {
                     return asset;
                 }
             } catch (_) {
-                // No FS data yet — fall through to generator
+                // No FS data — fall through to generator
             }
         }
 
@@ -211,6 +298,150 @@ export class CloudSystem {
     }
 
     /* ── Internal helpers ───────────────────────────────────────────────── */
+
+    /**
+     * Import a native 3D model file (glTF/GLB/OBJ/STL/PLY/FBX) from Puter FS.
+     * Downloads the file content, parses it with the appropriate Three.js loader,
+     * and adds the resulting object(s) to the scene.
+     *
+     * Generation stats are stored on the group's userData for the marketplace
+     * preview system to reference (bundleData / poly count).
+     */
+    async _importModelAsset(asset, fsPath, format, blob) {
+        if (!this.studio || !this.studio.scene) return false;
+
+        console.log(`[CloudSystem] Loading ${format} asset from ${fsPath}...`);
+
+        // Show loading state
+        if (this.studio.ui?.log) {
+            this.studio.ui.log(`Loading ${asset.name} (${(blob.size / 1024).toFixed(0)} KB ${format})...`, 'info');
+        }
+
+        try {
+            if (!blob || blob.size === 0) {
+                console.warn('[CloudSystem] Empty file:', fsPath);
+                return false;
+            }
+
+            // ── Resolve the appropriate loader ──
+            const loader = await _getLoader(format);
+            if (!loader) {
+                console.warn('[CloudSystem] No loader for format:', format);
+                return false;
+            }
+
+            // ── Parse: create an object URL and load it ──
+            const url = URL.createObjectURL(blob);
+            let object;
+
+            try {
+                if (format === 'gltf' || format === 'glb') {
+                    const gltfResult = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                    object = gltfResult.scene || gltfResult;
+                } else if (format === 'obj') {
+                    object = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                } else if (format === 'stl') {
+                    // STLLoader returns a BufferGeometry
+                    const geometry = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                    const mat = new THREE.MeshStandardMaterial({
+                        color: 0xaaaaaa,
+                        roughness: 0.5,
+                        metalness: 0.3,
+                    });
+                    object = new THREE.Mesh(geometry, mat);
+                    object.castShadow = true;
+                    object.receiveShadow = true;
+                } else if (format === 'ply') {
+                    const geometry = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                    const mat = new THREE.MeshStandardMaterial({
+                        color: 0xcccccc,
+                        roughness: 0.4,
+                        metalness: 0.2,
+                    });
+                    object = new THREE.Mesh(geometry, mat);
+                    object.castShadow = true;
+                    object.receiveShadow = true;
+                } else if (format === 'fbx') {
+                    object = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                } else {
+                    URL.revokeObjectURL(url);
+                    return false;
+                }
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+
+            if (!object) {
+                console.warn('[CloudSystem] Loader returned no object for', fsPath);
+                return false;
+            }
+
+            // ── Prepare the imported object ──
+            object.name = asset.name || format.toUpperCase() + ' Asset';
+            object.userData = {
+                ...object.userData,
+                importedFrom: fsPath,
+                importedFormat: format,
+                importedAssetId: asset.id,
+                importedAt: Date.now(),
+            };
+
+            // Compute total triangle count for status
+            let triCount = 0;
+            object.traverse((child) => {
+                if (child.isMesh && child.geometry) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                    const pos = child.geometry.attributes.position;
+                    if (pos) {
+                        triCount += pos.count / 3;
+                    }
+                }
+            });
+
+            // Auto-fit oversized models
+            const box = new THREE.Box3().setFromObject(object);
+            const size = box.getSize(new THREE.Vector3());
+            const diag = size.length();
+            if (diag > 20) {
+                const scale = 10 / diag;
+                object.scale.setScalar(scale);
+                console.log(`[CloudSystem] Scaled imported asset by ${scale.toFixed(3)} (was ${diag.toFixed(1)} units)`);
+            } else if (diag < 0.1) {
+                const scale = 2 / diag;
+                object.scale.setScalar(scale);
+            }
+
+            // ── Add to scene ──
+            this.studio.scene.add(object);
+            this.studio.objects.push(object);
+            this.studio.selectObject(object);
+            this.studio.frameSelected();
+            this.studio.ui.updateOutliner();
+
+            const fmtLabel = format.toUpperCase();
+            this.studio.ui.log(`Imported "${object.name}" (${fmtLabel}, ${triCount.toLocaleString()} tris)`, 'success');
+            console.log(`[CloudSystem] Imported ${format} asset: ${object.name} (${triCount} tris)`);
+            return true;
+
+        } catch (e) {
+            console.warn(`[CloudSystem] Failed to import ${format} asset ${fsPath}:`, e);
+            if (this.studio.ui?.log) {
+                this.studio.ui.log(`Failed to load ${asset.name}: ${e.message}`, 'error');
+            }
+            return false;
+        }
+    }
 
     /**
      * Import an asset that was downloaded from Puter FS (or other remote).

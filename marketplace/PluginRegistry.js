@@ -106,6 +106,50 @@ export class PluginRegistry {
       }
     });
 
+    this._addBuiltIn('physics-pro', {
+      name: 'Physics Pro Toolkit',
+      version: '1.5.0',
+      author: 'Simulate Labs',
+      description: 'SPH fluid simulation, soft bodies, ragdoll, vehicle physics — one-click primitives',
+      icon: 'fa-forward',
+      price: '$19.99',
+      category: 'physics',
+      minEditorVersion: '1.0.0',
+      hooks: {
+        onMenuAction: (data) => {
+          const editor = this.editor;
+          if (!editor || !data?.action) return;
+          if (data.action === 'physics-pro' ||
+              data.action === 'add-vehicle' ||
+              data.action === 'add-cloth' ||
+              data.action === 'add-ragdoll' ||
+              data.action === 'add-fluid') {
+            // Forward to the Physics Pro module
+            import('./plugins/PhysicsPro.js').then(({ executePhysicsPro }) => {
+              if (data.action === 'physics-pro') executePhysicsPro(editor);
+            }).catch(e => console.warn('[PhysicsPro]', e));
+          }
+        },
+        onSceneReady: () => {
+          const editor = this.editor;
+          if (editor?.ui) {
+            editor.ui.log('Physics Pro Toolkit ready — create vehicles, cloth, ragdolls from menu', 'success');
+          }
+        },
+      },
+      execute: async () => {
+        const editor = this.editor;
+        if (!editor) return;
+        try {
+          const { executePhysicsPro } = await import('./plugins/PhysicsPro.js');
+          await executePhysicsPro(editor);
+        } catch (e) {
+          console.error('[PhysicsPro] execute failed:', e);
+          editor.ui?.log('Physics Pro Toolkit failed to execute', 'error');
+        }
+      },
+    });
+
     this._addBuiltIn('voxel-engine', {
       name: 'Voxel Engine',
       version: '2.0.0',
