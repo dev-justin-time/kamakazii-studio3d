@@ -22,6 +22,7 @@ import { CloudSystem } from '../systems/CloudSystem.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';
+import { LightmapBaker } from '../systems/LightmapBaker.js';
 
 // Import Marketplace
 import { MarketplaceAPI, PluginRegistry } from '../marketplace/index.js';
@@ -81,6 +82,9 @@ class ProModelerStudio {
         this.vertexPaintSystem = new VertexPaintSystem(this);
         this.audioSystem = new AudioSystem(this);
         this.cloudSystem = new CloudSystem(this);
+
+        // Lightmap Baker (replaces the old generateLightmap stub)
+        this.lightmapBaker = new LightmapBaker(this.renderer);
 
         // VFX systems
         this.particleSystem = new ParticleSystem(this);
@@ -142,7 +146,7 @@ class ProModelerStudio {
         });
         const viewport = document.getElementById('viewport');
         this.renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -498,12 +502,73 @@ class ProModelerStudio {
     }
 
     initializeAdvancedLighting() {
+        const self = this;
         this.advancedLighting = {
-            generateLightmap: (object) => {
-                console.warn('[Engine] advancedLighting.generateLightmap is a stub — no real lightmap baking implemented. Open an issue if you need this feature.');
-                this.ui.log('Lightmap baking: not implemented (stub)', 'warning');
-                return { bake: () => this.ui.log('Lightmap baking: no-op (stub)', 'warning') };
-            }
+            /**
+             * Generate a lightmap for an object by rendering scene lighting
+             * into a UV2-space texture using the LightmapBaker system.
+             *
+             * @param {THREE.Object3D} [object] — Target object (defaults to the whole scene).
+             *                                   If a single mesh is selected, only that mesh
+             *                                   receives a lightmap. Otherwise all meshes in
+             *                                   the scene are baked.
+             * @param {object} [options]
+             * @param {number} [options.resolution=512]    — Lightmap pixel size.
+             * @param {number} [options.samples=4]         — Multi-sample count for quality.
+             * @param {boolean} [options.ambient=true]     — Include ambient in bake.
+             * @param {function} [options.onProgress]      — Progress callback (0..1).
+             * @returns {{ bake: Function, cancel?: Function }}
+             */
+            generateLightmap: (object, options = {}) => {
+                const target = object || self.scene;
+                const res = options.resolution || 512;
+                const samples = options.samples || 4;
+
+                self.ui.log(`Baking lightmap (${res}px, ${samples}x samples)...`, 'info');
+
+                let cancelled = false;
+                const promise = (async () => {
+                    try {
+                        const results = await self.lightmapBaker.bake(self.scene, target, {
+                            resolution: res,
+                            samplesPerLight: samples,
+                            ambient: options.ambient !== false,
+                            onProgress: (p) => {
+                                if (cancelled) return;
+                                const pct = Math.round(p * 100);
+                                self.ui.log(`Lightmap bake: ${pct}%`, 'info');
+                            },
+                        });
+
+                        if (cancelled) {
+                            self.ui.log('Lightmap bake cancelled', 'warning');
+                            return;
+                        }
+
+                        if (results.length === 0) {
+                            self.ui.log('No meshes found to bake lightmaps', 'warning');
+                        } else {
+                            self.ui.log(`Lightmap baked for ${results.length} mesh${results.length !== 1 ? 'es' : ''}`, 'success');
+                        }
+                    } catch (e) {
+                        console.error('[Engine] Lightmap bake failed:', e);
+                        self.ui.log(`Lightmap bake failed: ${e.message}`, 'error');
+                    }
+                })();
+
+                return {
+                    bake: () => promise,
+                    cancel: () => { cancelled = true; },
+                };
+            },
+
+            /**
+             * Remove lightmaps from all meshes in the scene (or a target object).
+             */
+            clearLightmaps: (target) => {
+                self.lightmapBaker.clear(target || self.scene);
+                self.ui.log('Lightmaps cleared', 'info');
+            },
         };
     }
 

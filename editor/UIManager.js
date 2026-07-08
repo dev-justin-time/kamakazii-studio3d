@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { setCloudStatus, initCloudRecheck, CloudState } from '../../shared/cloud-status.js';
+
 export class UIManager {
     constructor(studio) {
         this.studio = studio;
@@ -1610,7 +1612,7 @@ export class UIManager {
         }
     }
 
-    /* ── Cloud status indicator ────────────────────────────────────────── */
+    /* ── Cloud status indicator (uses shared/cloud-status.js) ────── */
 
     /**
      * Find the asset panel header and insert a cloud connection status badge.
@@ -1631,10 +1633,8 @@ export class UIManager {
         if (header.querySelector('.cloud-status-dot')) return;
 
         const dot = document.createElement('span');
-        dot.className = 'cloud-status-dot cloud-status-checking';
-        dot.title = 'Checking Puter connection...';
-        dot.setAttribute('aria-label', 'Cloud connection: checking');
         dot.textContent = 'Cloud';
+        setCloudStatus(dot, CloudState.CHECKING, 'Checking Puter connection...', 'cloud-status-dot', 'cloud-status-');
 
         // Insert into the panel-actions area (or at the end of the header)
         const actions = header.querySelector('.panel-actions');
@@ -1644,19 +1644,11 @@ export class UIManager {
             header.appendChild(dot);
         }
 
-        // Make the indicator clickable — force a re-check on click
-        dot.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this._refreshCloudStatus();
-        });
+        // Make the panel dot clickable
+        initCloudRecheck(dot, () => this._refreshCloudStatus(), 'cloud-status-dot', 'cloud-status-');
 
-        // Also wire the status bar indicator
-        const statusDot = document.getElementById('statusCloudDot');
-        if (statusDot) {
-            statusDot.addEventListener('click', () => {
-                this._refreshCloudStatus();
-            });
-        }
+        // Also wire the status bar indicator (uses no prefix — state class is bare 'connected'/'disconnected')
+        initCloudRecheck('statusCloudDot', () => this._refreshCloudStatus(), 'status-cloud-indicator', '');
 
         // Perform an initial async check
         this._refreshCloudStatus();
@@ -1671,59 +1663,23 @@ export class UIManager {
         if ((!panelDot && !document.getElementById('statusCloudDot')) || !this.studio.cloudSystem) return;
 
         // Set all indicators to checking state
-        this._setCloudIndicatorsState('checking', 'Checking Puter connection...', 'Cloud connection: checking');
+        setCloudStatus(panelDot, CloudState.CHECKING, 'Checking Puter connection...', 'cloud-status-dot', 'cloud-status-');
+        setCloudStatus('statusCloudDot', CloudState.CHECKING, 'Checking Puter connection...', 'status-cloud-indicator', '');
 
         try {
             // fetchAssets() will set cloudSystem._connected internally
             await this.studio.cloudSystem.fetchAssets();
-            this._updateCloudStatusIndicator(this.studio.cloudSystem.isConnected());
+            const connected = this.studio.cloudSystem.isConnected();
+            if (connected) {
+                setCloudStatus(panelDot, CloudState.CONNECTED, 'Connected to Puter — Cloud Store available', 'cloud-status-dot', 'cloud-status-');
+                setCloudStatus('statusCloudDot', CloudState.CONNECTED, 'Connected to Puter — Cloud Store available', 'status-cloud-indicator', '');
+            } else {
+                setCloudStatus(panelDot, CloudState.DISCONNECTED, 'Puter not available — using local assets only', 'cloud-status-dot', 'cloud-status-');
+                setCloudStatus('statusCloudDot', CloudState.DISCONNECTED, 'Puter not available — using local assets only', 'status-cloud-indicator', '');
+            }
         } catch (_) {
-            this._updateCloudStatusIndicator(false);
-        }
-    }
-
-    /**
-     * Apply a CSS class + title + aria-label to all cloud status indicators.
-     */
-    _setCloudIndicatorsState(cssClass, title, ariaLabel) {
-        // Asset panel header indicator
-        const panelDot = document.querySelector('.assets-panel .cloud-status-dot');
-        if (panelDot) {
-            const base = cssClass === 'connected'
-                ? 'cloud-status-dot cloud-status-connected'
-                : cssClass === 'disconnected'
-                    ? 'cloud-status-dot cloud-status-disconnected'
-                    : 'cloud-status-dot cloud-status-checking';
-            panelDot.className = base;
-            panelDot.title = title;
-            panelDot.setAttribute('aria-label', ariaLabel);
-        }
-
-        // Main status bar indicator
-        const statusDot = document.getElementById('statusCloudDot');
-        if (statusDot) {
-            statusDot.className = 'status-cloud-indicator ' + cssClass;
-            statusDot.title = title;
-            statusDot.setAttribute('aria-label', ariaLabel);
-        }
-    }
-
-    /**
-     * Update all indicators to reflect connected or disconnected state.
-     */
-    _updateCloudStatusIndicator(connected) {
-        if (connected) {
-            this._setCloudIndicatorsState(
-                'connected',
-                'Connected to Puter — Cloud Store available',
-                'Cloud connection: connected'
-            );
-        } else {
-            this._setCloudIndicatorsState(
-                'disconnected',
-                'Puter not available — using local assets only',
-                'Cloud connection: disconnected'
-            );
+            setCloudStatus(panelDot, CloudState.DISCONNECTED, 'Puter not available — using local assets only', 'cloud-status-dot', 'cloud-status-');
+            setCloudStatus('statusCloudDot', CloudState.DISCONNECTED, 'Puter not available — using local assets only', 'status-cloud-indicator', '');
         }
     }
 

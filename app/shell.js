@@ -373,9 +373,19 @@ export class StudioShell {
     this._popupOverlay.style.display = 'flex';
     this._activePopup = id;
 
+    // Timeout guard — if the dynamic import takes > 8s, show fallback
+    let _timedOut = false;
+    const timeoutId = setTimeout(() => {
+      _timedOut = true;
+      this._popupContent.innerHTML = `<div style="margin-bottom:16px;font-size:16px;font-weight:600;color:#eee">${label}</div><div style="padding:12px;color:#888">Feature page timed out — the module may not exist or failed to load.<br><span style="font-size:11px">features/${id}/page.js could not be loaded within 8s</span></div>`;
+      this._addOkButton();
+    }, 8000);
+
     try {
       // Try to dynamically import the feature page module
       const mod = await import(`../features/${id}/page.js`);
+      if (_timedOut) return; // already fell back
+      clearTimeout(timeoutId);
       this._popupContent.innerHTML = '';
       const header = document.createElement('div');
       header.style.cssText = 'margin-bottom:16px;font-size:16px;font-weight:600;color:#eee';
@@ -385,8 +395,10 @@ export class StudioShell {
       // Add OK button
       this._addOkButton();
     } catch (e) {
+      clearTimeout(timeoutId);
+      if (_timedOut) return;
       // Fallback: render basic controls
-      this._popupContent.innerHTML = `<div style="margin-bottom:16px;font-size:16px;font-weight:600;color:#eee">${label}</div><div style="padding:12px;color:#888">Feature page loading...<br><span style="font-size:11px">${e.message}</span></div>`;
+      this._popupContent.innerHTML = `<div style="margin-bottom:16px;font-size:16px;font-weight:600;color:#eee">${label}</div><div style="padding:12px;color:#888">Feature page failed to load<br><span style="font-size:11px">${e.message}</span></div>`;
       this._addOkButton();
     }
   }
