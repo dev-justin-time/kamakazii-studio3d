@@ -7,6 +7,8 @@
  * engine integration where available and status feedback for all actions.
  */
 
+import * as THREE from 'three';
+
 function _getApp() { return window.ProModelerApp; }
 function _getEngine() { return _getApp()?.engine || _getApp(); }
 
@@ -15,6 +17,54 @@ export function status(msg) {
   const el = document.getElementById('status-left');
   if (el) el.textContent = msg;
   console.log('[Feature]', msg);
+}
+
+/** Read a <select> value by data-key from the active feature panel */
+function _readSelect(key, fallback) {
+  const el = document.querySelector(`select[data-key="${key}"]`);
+  return el?.value || fallback;
+}
+
+/** Read a <input type=range> value by data-key */
+function _readSlider(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"]`);
+  return el ? parseFloat(el.value) : fallback;
+}
+
+/** Read a <input type=number> value by data-key */
+function _readNumber(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"][type="number"]`);
+  return el ? parseFloat(el.value) : fallback;
+}
+
+/** Read a <input type=color> value by data-key */
+function _readColor(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"][type="color"]`);
+  return el?.value || fallback;
+}
+
+/** Read a <select> value by data-key from the active feature panel */
+function _readSelect(key, fallback) {
+  const el = document.querySelector(`select[data-key="${key}"]`);
+  return el?.value || fallback;
+}
+
+/** Read a <input type=range> value by data-key */
+function _readSlider(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"]`);
+  return el ? parseFloat(el.value) : fallback;
+}
+
+/** Read a <input type=number> value by data-key */
+function _readNumber(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"][type="number"]`);
+  return el ? parseFloat(el.value) : fallback;
+}
+
+/** Read a <input type=color> value by data-key */
+function _readColor(key, fallback) {
+  const el = document.querySelector(`input[data-key="${key}"][type="color"]`);
+  return el?.value || fallback;
 }
 
 /**
@@ -175,12 +225,21 @@ export const actionMap = {
 
   // ── Water ───────────────────────────────────────────────────
   logAddWater:    () => {
-    const engine = _getEngine();
-    if (engine?.scene) {
-      // Create a water plane in the scene
-      status('Water: Added water plane at y=0');
+    const app = _getApp();
+    if (app?.waterSystem) {
+      const preset = _readSelect('water-type') || 'calm';
+      const scale = _readNumber('water-scale', 20);
+      const height = _readNumber('water-height', 0);
+      const waveHeight = _readSlider('water-wave-height', 0.3);
+      const waveSpeed = _readSlider('water-speed', 1.0);
+      const mesh = app.waterSystem.create({ preset, scale, height, waveHeight, waveSpeed });
+      if (mesh) {
+        app.selectObject?.(mesh);
+        app.ui?.updateOutliner?.();
+      }
+      status(`Water: Added ${preset} water plane (${scale}m, height ${height})`);
     } else {
-      status('Water: Scene not ready');
+      status('Water: System not available');
     }
   },
 
@@ -206,24 +265,57 @@ export const actionMap = {
   },
 
   // ── Weather ─────────────────────────────────────────────────
-  logWeather:     () => status('Weather: Applied weather effect to scene'),
+  logWeather:     () => {
+    const app = _getApp();
+    if (app?.weatherSystem) {
+      const type = _readSelect('weather-type') || 'rain';
+      const intensity = _readSlider('weather-intensity', 0.5);
+      const fogColor = _readColor('weather-fog-color', '#888888');
+      const fogDensity = _readSlider('weather-fog-density', 0.01);
+      app.weatherSystem.apply(type, { intensity, fogColor, fogDensity });
+      status(`Weather: Applied ${type} (intensity ${(intensity * 100).toFixed(0)}%)`);
+    } else {
+      status('Weather: System not available');
+    }
+  },
+  logClearWeather: () => {
+    const app = _getApp();
+    if (app?.weatherSystem) {
+      app.weatherSystem.clear();
+      status('Weather: Cleared all weather effects');
+    }
+  },
 
   // ── Particles ───────────────────────────────────────────────
   logParticleEmit:() => {
     const app = _getApp();
     if (app?.particleSystem) {
-      app.particleSystem.emit?.();
-      status('Particles: Emitter started');
+      const preset = _readSelect('particle-type') || 'fire';
+      const position = app.selectedObject?.position?.clone?.()
+        || new THREE.Vector3(0, 1, 0);
+      const rate = _readSlider('particle-rate', 20);
+      const lifetime = _readSlider('particle-life', 2);
+      const speed = _readSlider('particle-speed', 3);
+      const size = _readSlider('particle-size', 0.1);
+      const emitter = app.particleSystem.emit(preset, position, { emitRate: rate, lifetime, speed, size });
+      status(`Particles: ${preset} emitter started (${rate} particles/s)`);
     } else {
-      status('Particles: Emitter started (configure preset and parameters)');
+      status('Particles: System not available');
     }
   },
   logParticleStop:() => {
     const app = _getApp();
     if (app?.particleSystem) {
-      app.particleSystem.stop?.();
+      app.particleSystem.stop();
     }
-    status('Particles: Emitter stopped');
+    status('Particles: All emitters stopped');
+  },
+  logParticleClear:() => {
+    const app = _getApp();
+    if (app?.particleSystem) {
+      app.particleSystem.clear();
+    }
+    status('Particles: All emitters cleared');
   },
 
   // ── Trails ──────────────────────────────────────────────────
@@ -231,8 +323,34 @@ export const actionMap = {
   logClearTrails: () => status('Trails: Cleared all trail geometry'),
 
   // ── Fire FX ─────────────────────────────────────────────────
-  logIgnite:      () => status('Fire FX: Ignited fire emitter on selected object'),
-  logExtinguish:  () => status('Fire FX: Extinguished fire effect'),
+  logIgnite:      () => {
+    const app = _getApp();
+    if (app?.particleSystem) {
+      const position = app.selectedObject?.position?.clone?.()
+        || new THREE.Vector3(0, 0, 0);
+      const intensity = _readSlider('fire-intensity', 1);
+      const emitter = app.particleSystem.emit('fire', position, {
+        emitRate: Math.floor(60 * intensity),
+        speed: 3 * intensity,
+      });
+      // Tag for extinguish lookup
+      if (emitter) emitter._fireFx = true;
+      status(`Fire FX: Ignited fire emitter (intensity ${intensity.toFixed(1)})`);
+    } else {
+      status('Fire FX: Particle system not available');
+    }
+  },
+  logExtinguish:  () => {
+    const app = _getApp();
+    if (app?.particleSystem) {
+      // Remove only fire-tagged emitters
+      const fireEmitters = app.particleSystem.emitters.filter(e => e._fireFx);
+      for (const e of fireEmitters) app.particleSystem.remove(e);
+      status(`Fire FX: Extinguished ${fireEmitters.length} fire emitter(s)`);
+    } else {
+      status('Fire FX: No particle system');
+    }
+  },
 
   // ── Report ──────────────────────────────────────────────────
   logReport:      () => {

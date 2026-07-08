@@ -2,6 +2,7 @@
  * Terrain Export — Export terrain meshes to standard 3D formats
  * Supports OBJ, glTF, heightmap PNG, and raw data formats
  */
+import { initCanvas, downloadFile } from '../_shared/canvasUtils.js';
 
 const EXPORT_FORMATS = {
   obj: {
@@ -277,15 +278,9 @@ function renderOptions(format) {
 }
 
 function initPreview() {
-  const canvas = document.getElementById('export-preview');
-  if (!canvas) return;
-  
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width;
-  canvas.height = rect.height;
-  
-  const ctx = canvas.getContext('2d');
-  drawTerrainPreview(ctx, canvas.width, canvas.height);
+  const result = initCanvas('export-preview');
+  if (!result) return;
+  drawTerrainPreview(result.ctx, result.canvas.width, result.canvas.height);
 }
 
 function drawTerrainPreview(ctx, width, height) {
@@ -448,13 +443,13 @@ async function startExport() {
   const progressContainer = document.getElementById('export-progress');
   const progressBar = document.getElementById('progress-bar');
   const progressText = document.getElementById('progress-text');
-  
+
   if (!progressContainer || !progressBar || !progressText) return;
-  
+
   isExporting = true;
   exportProgress = 0;
   progressContainer.style.display = 'block';
-  
+
   const stages = [
     { progress: 10, text: 'Gathering terrain data...' },
     { progress: 30, text: 'Processing vertices...' },
@@ -463,57 +458,34 @@ async function startExport() {
     { progress: 90, text: 'Packaging file...' },
     { progress: 100, text: 'Export complete!' }
   ];
-  
+
   for (const stage of stages) {
     await new Promise(resolve => setTimeout(resolve, 500));
     exportProgress = stage.progress;
     progressBar.style.width = `${stage.progress}%`;
     progressText.textContent = stage.text;
   }
-  
-  // Generate export data
-  const exportData = {
-    format: selectedFormat,
-    options: exportOptions,
-    timestamp: Date.now()
-  };
-  
-  // Trigger download
-  triggerDownload(exportData);
-  
-  // Add to recent exports
+
+  triggerDownload({ format: selectedFormat, options: exportOptions, timestamp: Date.now() });
   addToRecentExports();
-  
   isExporting = false;
 }
 
 function triggerDownload(data) {
   const format = EXPORT_FORMATS[selectedFormat];
   const filename = `terrain_${Date.now()}${format.extension}`;
-  
-  // Create dummy file content for demo
+
   let content = '';
   switch (selectedFormat) {
     case 'obj':
-      content = generateOBJ();
-      break;
-    case 'gltf':
-    case 'glb':
-      content = JSON.stringify({ asset: { version: '2.0' }, meshes: [] }, null, 2);
-      break;
+      content = generateOBJ(); break;
+    case 'gltf': case 'glb':
+      content = JSON.stringify({ asset: { version: '2.0' }, meshes: [] }, null, 2); break;
     default:
       content = `Terrain export - ${format.name}\nGenerated: ${new Date().toISOString()}`;
   }
-  
-  const blob = new Blob([content], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  
-  URL.revokeObjectURL(url);
+
+  downloadFile(content, filename);
 }
 
 function generateOBJ() {

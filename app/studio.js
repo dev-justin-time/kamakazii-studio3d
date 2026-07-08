@@ -17,6 +17,9 @@ import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
 import { STLExporter } from 'three/addons/exporters/STLExporter.js';
 import { safeGetColor, safeGetColorHexStr, safeCopyColor } from './material-helpers.js';
+import { ParticleSystem } from '../systems/ParticleSystem.js';
+import { WeatherSystem } from '../systems/WeatherSystem.js';
+import { WaterSystem } from '../systems/WaterSystem.js';
 
 // ── Log helper ──
 const log = (msg, type = 'info') => {
@@ -61,6 +64,7 @@ export class Studio {
     this._gridSnapEnabled = true;
     this._gizmoSize = 1;
     this._lastFrameTime = performance.now();
+    this._elapsed = 0; // elapsed time in seconds for VFX systems
     this._frameDeltas = [];
     this._showProfiler = true;
     this._easingFunctions = {
@@ -72,8 +76,14 @@ export class Studio {
       elastic: t => t === 0 || t === 1 ? t : -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * (2 * Math.PI) / 3),
     };
 
+    // VFX systems — instantiated after scene is ready
+    this.particleSystem = null;
+    this.weatherSystem = null;
+    this.waterSystem = null;
+
     this._initCore();
     this._finishInit();
+    this._initVFX();
   }
 
   _initCore() {
@@ -310,6 +320,13 @@ export class Studio {
       this.scene.remove(object.userData.__boxHelper);
       delete object.userData.__boxHelper;
     }
+  }
+
+  // ── VFX Systems ──
+  _initVFX() {
+    this.particleSystem = new ParticleSystem(this);
+    this.weatherSystem = new WeatherSystem(this);
+    this.waterSystem = new WaterSystem(this);
   }
 
   // ── Primitive creation ──
@@ -775,8 +792,16 @@ export class Studio {
     const now = performance.now();
     const delta = now - this._lastFrameTime;
     this._lastFrameTime = now;
+    this._elapsed += delta * 0.001; // accumulate elapsed seconds
+    const dt = delta * 0.001; // delta in seconds for VFX
     this._frameDeltas.push(delta);
     if (this._frameDeltas.length > 30) this._frameDeltas.shift();
+
+    // Update VFX systems
+    if (this.particleSystem) this.particleSystem.update(dt);
+    if (this.weatherSystem) this.weatherSystem.update(dt, this.camera);
+    if (this.waterSystem) this.waterSystem.update(this._elapsed, this.camera);
+
     this.render();
     const avgDelta = this._frameDeltas.reduce((s, d) => s + d, 0) / this._frameDeltas.length;
     const fps = avgDelta > 0 ? Math.round(1000 / avgDelta) : 60;

@@ -2,6 +2,7 @@
  * Scenery Scatter — Distribute objects across terrain using rules
  * Paint or procedurally place vegetation, rocks, structures, and decals
  */
+import { initCanvas, bindSlider, bindToolButtons } from '../_shared/canvasUtils.js';
 
 const SCATTER_CATEGORIES = {
   vegetation: {
@@ -227,24 +228,14 @@ export function init(container) {
     </div>
   `;
 
-  initCanvas();
+  setupCanvas();
   setupEventListeners();
 }
 
-function initCanvas() {
-  const canvas = document.getElementById('scatter-canvas');
-  if (!canvas) return;
-  
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width;
-  canvas.height = rect.height;
-  
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw terrain representation
-  drawTerrainPreview(ctx, canvas.width, canvas.height);
+function setupCanvas() {
+  const result = initCanvas('scatter-canvas');
+  if (!result) return;
+  drawTerrainPreview(result.ctx, result.canvas.width, result.canvas.height);
 }
 
 function drawTerrainPreview(ctx, width, height) {
@@ -288,12 +279,7 @@ function setupEventListeners() {
   });
   
   // Scatter mode buttons
-  document.querySelectorAll('.scatter-mode').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.scatter-mode').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-  });
+  bindToolButtons('.scatter-mode', 'mode', () => {});
   
   // Canvas events
   canvas.addEventListener('mousedown', startScattering);
@@ -304,14 +290,14 @@ function setupEventListeners() {
   canvas.addEventListener('mouseleave', () => { isScattering = false; });
   
   // Rule sliders
-  setupSlider('min-slope', 'minSlope', v => `${v}°`);
-  setupSlider('max-slope', 'maxSlope', v => `${v}°`);
-  setupSlider('min-height', 'minHeight', v => `${v}%`, 100);
-  setupSlider('max-height', 'maxHeight', v => `${v}%`, 100);
-  setupSlider('min-scale', 'minScale', v => v.toFixed(1));
-  setupSlider('max-scale', 'maxScale', v => v.toFixed(1));
-  setupSlider('density', 'density', v => `${v}%`, 100);
-  setupSlider('collision-radius', 'collisionRadius', v => v.toString());
+  bindSlider('min-slope', 'min-slope-val', v => `${v}°`, scatterRules, 'minSlope');
+  bindSlider('max-slope', 'max-slope-val', v => `${v}°`, scatterRules, 'maxSlope');
+  bindSlider('min-height', 'min-height-val', v => `${v}%`, scatterRules, 'minHeight', { divisor: 100 });
+  bindSlider('max-height', 'max-height-val', v => `${v}%`, scatterRules, 'maxHeight', { divisor: 100 });
+  bindSlider('min-scale', 'min-scale-val', v => v.toFixed(1), scatterRules, 'minScale');
+  bindSlider('max-scale', 'max-scale-val', v => v.toFixed(1), scatterRules, 'maxScale');
+  bindSlider('density', 'density-val', v => `${v}%`, scatterRules, 'density', { divisor: 100 });
+  bindSlider('collision-radius', 'collision-val', v => v.toString(), scatterRules, 'collisionRadius');
   
   // Checkboxes
   document.getElementById('align-normal')?.addEventListener('change', (e) => {
@@ -339,17 +325,7 @@ function setupEventListeners() {
   document.getElementById('export-scattered')?.addEventListener('click', exportPlacement);
 }
 
-function setupSlider(id, ruleKey, formatter, divisor = 1) {
-  const input = document.getElementById(id);
-  const display = document.getElementById(`${id}-val`);
-  if (!input) return;
-  
-  input.addEventListener('input', () => {
-    const val = parseFloat(input.value);
-    scatterRules[ruleKey] = divisor ? val / divisor : val;
-    if (display) display.textContent = formatter(val);
-  });
-}
+
 
 function updateItemList() {
   const container = document.getElementById('item-list');
@@ -505,7 +481,7 @@ function autoScatter() {
 
 function clearScattered() {
   scatteredObjects = [];
-  initCanvas();
+  setupCanvas();
   updateObjectCount();
 }
 

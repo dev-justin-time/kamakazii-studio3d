@@ -315,7 +315,7 @@ export class UIManager {
                     // Execute the associated action string in a safe manner
                     // (keeps current inline onclick behavior but avoids relying on innerHTML onclick)
                     // Prefer dispatching the corresponding data-action if present
-                    const match = item.action.match(/\\[data-action=([^\\]]+)\\]/);
+                    const match = item.action.match(/\[data-action=([^\]]+)\]/);
                     if (match) {
                         const act = match[1];
                         const btn = document.querySelector(`[data-action="${act}"]`);

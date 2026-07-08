@@ -13,7 +13,8 @@ const meta = {
     { key: 'particle-size', type: 'slider', label: 'Size', min: 0.01, max: 2, step: 0.01, default: 0.1 },
     { key: 'sep1', type: 'label', label: '──────────' },
     { key: 'emit', type: 'button', label: 'Start Emitting', onClick: 'logParticleEmit' },
-    { key: 'stop', type: 'button', label: 'Stop', onClick: 'logParticleStop' }
+    { key: 'stop', type: 'button', label: 'Stop', onClick: 'logParticleStop' },
+    { key: 'clear', type: 'button', label: 'Clear All', onClick: 'logParticleClear' }
   ],
   onApply: () => {},
 };

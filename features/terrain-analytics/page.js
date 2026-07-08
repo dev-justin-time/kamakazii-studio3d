@@ -2,6 +2,7 @@
  * Terrain Analytics — Analyze terrain properties and visualize statistics
  * Height distribution, slope analysis, flow maps, and terrain metrics
  */
+import { bindToolButtons, runProgressSteps, downloadFile } from '../_shared/canvasUtils.js';
 
 const ANALYSIS_TYPES = {
   height: {
@@ -633,13 +634,7 @@ function setupEventListeners() {
   });
   
   // Visualization mode buttons
-  document.querySelectorAll('.viz-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.viz-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      // Switch visualization mode
-    });
-  });
+  bindToolButtons('.viz-btn', 'viz', () => {});
   
   // Run analysis button
   document.getElementById('run-analysis')?.addEventListener('click', runAnalysis);
@@ -657,15 +652,7 @@ function setupEventListeners() {
 }
 
 async function runAnalysis() {
-  const progressContainer = document.getElementById('analysis-progress');
-  const progressText = document.getElementById('progress-text');
-  const progressPercent = document.getElementById('progress-percent');
-  
-  if (!progressContainer || !progressText || !progressPercent) return;
-  
   isAnalyzing = true;
-  progressContainer.style.display = 'block';
-  
   const steps = [
     { text: 'Loading terrain data...', percent: 10 },
     { text: 'Computing gradients...', percent: 30 },
@@ -674,27 +661,16 @@ async function runAnalysis() {
     { text: 'Calculating statistics...', percent: 90 },
     { text: 'Analysis complete!', percent: 100 }
   ];
-  
-  for (const step of steps) {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    progressText.textContent = step.text;
-    progressPercent.textContent = `${step.percent}%`;
-  }
-  
-  // Generate new data
-  generateSampleData();
-  
-  // Redraw visualization
-  const canvas = document.getElementById('analytics-canvas');
-  if (canvas) {
-    const ctx = canvas.getContext('2d');
-    drawAnalysisVisualization(ctx, canvas.width, canvas.height);
-  }
-  
-  setTimeout(() => {
-    progressContainer.style.display = 'none';
+
+  await runProgressSteps('analysis-progress', 'progress-text', 'progress-percent', steps, () => {
+    generateSampleData();
+    const canvas = document.getElementById('analytics-canvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      drawAnalysisVisualization(ctx, canvas.width, canvas.height);
+    }
     isAnalyzing = false;
-  }, 1000);
+  });
 }
 
 function exportResults() {
@@ -703,16 +679,7 @@ function exportResults() {
     metrics: TERRAIN_METRICS,
     timestamp: Date.now()
   };
-  
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `terrain_analysis_${selectedAnalysis}_${Date.now()}.json`;
-  a.click();
-  
-  URL.revokeObjectURL(url);
+  downloadFile(JSON.stringify(data, null, 2), `terrain_analysis_${selectedAnalysis}_${Date.now()}.json`, 'application/json');
 }
 
 export function destroy() {

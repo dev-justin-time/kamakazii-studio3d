@@ -9,16 +9,16 @@ import JSZip from 'jszip';
 // import nipplejs from 'nipplejs'; 
 
 // Import Systems
-import { ProceduralSystem } from './modules/ProceduralSystem.js';
-import { PhysicsSystem } from './modules/PhysicsSystem.js';
-import { SculptSystem } from './modules/SculptSystem.js';
-import { TexturePaintSystem } from './modules/TexturePaintSystem.js';
-import { VertexPaintSystem } from './modules/VertexPaintSystem.js';
-import { NodeEditorSystem } from './modules/NodeEditorSystem.js';
+import { ProceduralSystem } from '../systems/ProceduralSystem.js';
+import { PhysicsSystem } from '../systems/PhysicsSystem.js';
+import { SculptSystem } from '../systems/SculptSystem.js';
+import { TexturePaintSystem } from '../systems/TexturePaintSystem.js';
+import { VertexPaintSystem } from '../systems/VertexPaintSystem.js';
+import { NodeEditorSystem } from '../systems/NodeEditorSystem.js';
 import { UIManager } from './UIManager.js';
-import { InputManager } from './modules/InputManager.js';
-import { AudioSystem } from './modules/AudioSystem.js';
-import { CloudSystem } from './modules/CloudSystem.js';
+import { InputManager } from '../systems/InputManager.js';
+import { AudioSystem } from '../systems/AudioSystem.js';
+import { CloudSystem } from '../systems/CloudSystem.js';
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';

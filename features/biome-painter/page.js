@@ -2,6 +2,7 @@
  * Biome Painter — Paint terrain biomes with brush tools
  * Assign vegetation, ground cover, and environmental zones to terrain areas
  */
+import { initCanvas, createUndoManager, bindToolButtons, bindSlider, bindUndoRedoKeys } from '../_shared/canvasUtils.js';
 
 const BIOME_TYPES = {
   temperateForest: {
@@ -91,10 +92,8 @@ let selectedBiome = 'temperateForest';
 let brushSettings = { ...BRUSH_SETTINGS };
 let isPainting = false;
 let biomeMap = null; // Will hold painted biome data
-let history = [];
-let historyIndex = -1;
-const MAX_HISTORY = 50;
-let _keydownHandler = null;
+const undoMgr = createUndoManager({ maxHistory: 50 });
+let _unbindKeys = null;
 
 export function render(container) {
   init(container);
@@ -190,47 +189,21 @@ export function init(container) {
     </div>
   `;
 
-  initCanvas();
+  setupCanvas();
   setupEventListeners();
   initBiomeMap();
 }
 
-function initCanvas() {
-  const canvas = document.getElementById('biome-canvas');
-  if (!canvas) return;
-  
-  const rect = canvas.parentElement.getBoundingClientRect();
-  canvas.width = rect.width;
-  canvas.height = rect.height;
-  
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw grid
-  ctx.strokeStyle = '#3a3a3a';
-  ctx.lineWidth = 0.5;
-  for (let x = 0; x < canvas.width; x += 50) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
-    ctx.stroke();
-  }
-  for (let y = 0; y < canvas.height; y += 50) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
-    ctx.stroke();
-  }
+function setupCanvas() {
+  const result = initCanvas('biome-canvas', { grid: true });
+  if (result) { _canvas = result.canvas; _ctx = result.ctx; }
 }
+let _canvas = null, _ctx = null;
 
 function initBiomeMap() {
-  const canvas = document.getElementById('biome-canvas');
-  if (!canvas) return;
-  
-  biomeMap = new Uint8Array(canvas.width * canvas.height);
-  history = [new Uint8Array(biomeMap)];
-  historyIndex = 0;
+  if (!_canvas) return;
+  biomeMap = new Uint8Array(_canvas.width * _canvas.height);
+  undoMgr.save(biomeMap);
 }
 
 function setupEventListeners() {
@@ -250,36 +223,14 @@ function setupEventListeners() {
   });
   
   // Tool buttons
-  document.querySelectorAll('.tool-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      brushSettings.mode = btn.dataset.mode;
-      document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-  });
+  bindToolButtons('.tool-btn', 'mode', (mode) => { brushSettings.mode = mode; });
   
   // Brush sliders
-  const sliders = [
-    { id: 'brush-size', prop: 'size', display: 'size-val', format: v => v },
-    { id: 'brush-opacity', prop: 'opacity', display: 'opacity-val', format: v => `${v}%` },
-    { id: 'brush-hardness', prop: 'hardness', display: 'hardness-val', format: v => `${v}%` },
-    { id: 'brush-spacing', prop: 'spacing', display: 'spacing-val', format: v => `${v}%` },
-    { id: 'brush-jitter', prop: 'jitter', display: 'jitter-val', format: v => `${v}%` }
-  ];
-  
-  sliders.forEach(({ id, prop, display, format }) => {
-    const input = document.getElementById(id);
-    if (!input) return;
-    input.addEventListener('input', () => {
-      const val = parseFloat(input.value);
-      if (prop === 'size') {
-        brushSettings[prop] = val;
-      } else {
-        brushSettings[prop] = val / 100;
-      }
-      document.getElementById(display).textContent = format(val);
-    });
-  });
+  bindSlider('brush-size', 'size-val', v => v, brushSettings, 'size');
+  bindSlider('brush-opacity', 'opacity-val', v => `${v}%`, brushSettings, 'opacity', { divisor: 100 });
+  bindSlider('brush-hardness', 'hardness-val', v => `${v}%`, brushSettings, 'hardness', { divisor: 100 });
+  bindSlider('brush-spacing', 'spacing-val', v => `${v}%`, brushSettings, 'spacing', { divisor: 100 });
+  bindSlider('brush-jitter', 'jitter-val', v => `${v}%`, brushSettings, 'jitter', { divisor: 100 });
   
   // Canvas painting
   canvas.addEventListener('mousedown', startPainting);
@@ -293,13 +244,7 @@ function setupEventListeners() {
   // Undo/Redo
   document.getElementById('undo-btn')?.addEventListener('click', undo);
   document.getElementById('redo-btn')?.addEventListener('click', redo);
-  
-  // Keyboard shortcuts
-  _keydownHandler = (e) => {
-    if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
-    if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
-  };
-  window.addEventListener('keydown', _keydownHandler);
+  _unbindKeys = bindUndoRedoKeys(undo, redo);
   
   // Apply button
   document.getElementById('apply-biomes')?.addEventListener('click', applyBiomes);
@@ -429,31 +374,9 @@ function fillArea(startX, startY, biomeKey) {
   saveHistory();
 }
 
-function saveHistory() {
-  if (!biomeMap) return;
-  history = history.slice(0, historyIndex + 1);
-  history.push(new Uint8Array(biomeMap));
-  historyIndex = history.length - 1;
-  
-  if (history.length > MAX_HISTORY) {
-    history.shift();
-    historyIndex--;
-  }
-}
-
-function undo() {
-  if (historyIndex <= 0) return;
-  historyIndex--;
-  biomeMap = new Uint8Array(history[historyIndex]);
-  redrawCanvas();
-}
-
-function redo() {
-  if (historyIndex >= history.length - 1) return;
-  historyIndex++;
-  biomeMap = new Uint8Array(history[historyIndex]);
-  redrawCanvas();
-}
+function saveHistory() { if (biomeMap) undoMgr.save(biomeMap); }
+function undo() { const d = undoMgr.undo(biomeMap); if (d) { biomeMap = d; redrawCanvas(); } }
+function redo() { const d = undoMgr.redo(biomeMap); if (d) { biomeMap = d; redrawCanvas(); } }
 
 function redrawCanvas() {
   const canvas = document.getElementById('biome-canvas');
@@ -530,11 +453,7 @@ function clearBiomes() {
 }
 
 export function destroy() {
-  if (_keydownHandler) {
-    window.removeEventListener('keydown', _keydownHandler);
-    _keydownHandler = null;
-  }
+  if (_unbindKeys) { _unbindKeys(); _unbindKeys = null; }
   biomeMap = null;
-  history = [];
-  historyIndex = -1;
+  undoMgr.clear();
 }

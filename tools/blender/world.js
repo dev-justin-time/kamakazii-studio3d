@@ -1,4 +1,4 @@
-/ /game/world.js
+// /game/world.js
 // Orchestrator: composes scene-level objects (lights, ground, clouds, plane)
 // with domain managers (buildings, powerups, explosions, ideas, multiplayer).
 

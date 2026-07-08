@@ -2,6 +2,7 @@
  * Terrain Presets — Pre-built terrain configurations for quick map creation
  * Provides curated terrain presets with elevation, erosion, and texture settings
  */
+import { initTagFilters as initTagFiltersShared, highlightTagButton, bindSearchFilter } from '../_shared/canvasUtils.js';
 
 const TERRAIN_PRESETS = {
   mountainRange: {
@@ -197,11 +198,16 @@ export function init(container) {
   initPreviews();
   
   // Setup search
-  const searchInput = container.querySelector('#preset-search');
-  searchInput?.addEventListener('input', filterPresets);
-  
+  bindSearchFilter('preset-search', () => document.querySelectorAll('.preset-card'), (card, q) => {
+    const key = card.dataset.key;
+    const preset = TERRAIN_PRESETS[key];
+    return preset.name.toLowerCase().includes(q) ||
+           preset.description.toLowerCase().includes(q) ||
+           preset.tags.some(t => t.includes(q));
+  });
+
   // Setup tag filters
-  initTagFilters();
+  setupTagFilters();
   
   // Setup click handlers
   container.querySelectorAll('.preset-card').forEach(card => {
@@ -280,62 +286,20 @@ function generatePreview(ctx, width, height, settings) {
   ctx.putImageData(imageData, 0, 0);
 }
 
-function initTagFilters() {
+function setupTagFilters() {
   const allTags = new Set();
   Object.values(TERRAIN_PRESETS).forEach(p => p.tags.forEach(t => allTags.add(t)));
-  
-  const container = document.getElementById('tag-filters');
-  if (!container) return;
-  
-  allTags.forEach(tag => {
-    const btn = document.createElement('button');
-    btn.className = 'tag-btn';
-    btn.dataset.tag = tag;
-    btn.textContent = tag;
-    btn.style.cssText = 'padding: 4px 10px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 12px; font-size: 11px; cursor: pointer; color: var(--text-secondary);';
-    btn.addEventListener('click', () => filterByTag(tag));
-    container.appendChild(btn);
-  });
+  initTagFiltersShared('tag-filters', allTags, filterByTag);
 }
 
 function filterByTag(tag) {
-  const cards = document.querySelectorAll('.preset-card');
-  const btns = document.querySelectorAll('.tag-btn');
-  
-  btns.forEach(btn => {
-    if (btn.dataset.tag === tag || (tag === 'all' && btn.dataset.tag === 'all')) {
-      btn.style.background = 'var(--accent)';
-      btn.style.color = 'white';
-      btn.style.borderColor = 'var(--accent)';
-    } else {
-      btn.style.background = 'var(--bg-tertiary)';
-      btn.style.color = 'var(--text-secondary)';
-      btn.style.borderColor = 'var(--border)';
-    }
-  });
-  
-  cards.forEach(card => {
-    if (tag === 'all' || card.dataset.tags.includes(tag)) {
-      card.style.display = 'block';
-    } else {
-      card.style.display = 'none';
-    }
+  highlightTagButton(tag);
+  document.querySelectorAll('.preset-card').forEach(card => {
+    card.style.display = (tag === 'all' || card.dataset.tags.includes(tag)) ? 'block' : 'none';
   });
 }
 
-function filterPresets() {
-  const search = document.getElementById('preset-search')?.value.toLowerCase() || '';
-  const cards = document.querySelectorAll('.preset-card');
-  
-  cards.forEach(card => {
-    const key = card.dataset.key;
-    const preset = TERRAIN_PRESETS[key];
-    const matches = preset.name.toLowerCase().includes(search) || 
-                   preset.description.toLowerCase().includes(search) ||
-                   preset.tags.some(t => t.includes(search));
-    card.style.display = matches ? 'block' : 'none';
-  });
-}
+
 
 function applyPreset(key) {
   const preset = TERRAIN_PRESETS[key];

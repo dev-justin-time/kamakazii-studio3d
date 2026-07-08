@@ -11,7 +11,8 @@ const meta = {
     { key: 'weather-fog-color', type: 'color', label: 'Fog Color', default: '#888888' },
     { key: 'weather-fog-density', type: 'slider', label: 'Fog Density', min: 0, max: 0.1, step: 0.001, default: 0.01 },
     { key: 'sep1', type: 'label', label: '──────────' },
-    { key: 'apply-weather', type: 'button', label: 'Apply Weather', onClick: 'logWeather' }
+    { key: 'apply-weather', type: 'button', label: 'Apply Weather', onClick: 'logWeather' },
+    { key: 'clear-weather', type: 'button', label: 'Clear Weather', onClick: 'logClearWeather' }
   ],
   onApply: () => {},
 };

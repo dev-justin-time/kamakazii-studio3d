@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://esm.sh; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' https://esm.sh blob: data:; worker-src 'self' blob:;">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Advanced 3D Terrain Generator</title>
     <link rel="stylesheet" href="style.css">
@@ -137,6 +138,24 @@
                     <div class="control-group checkbox-group">
                         <input type="checkbox" id="daynight-toggle">
                         <label for="daynight-toggle" style="cursor: pointer;">Auto Day/Night Cycle</label>
+                    </div>
+                    <hr style="border-color:#333;margin:8px 0">
+                    <div class="control-group">
+                        <label style="color:#38bdf8">💾 Save / Load Maps</label>
+                        <div style="display:flex;gap:4px;align-items:center;">
+                            <input type="text" id="map-name-input" placeholder="Map name..." style="flex:1;padding:4px 6px;background:#1a1a2e;border:1px solid #333;color:#fff;border-radius:3px;font-size:11px;">
+                        </div>
+                        <div style="display:flex;gap:4px;margin-top:5px;">
+                            <button id="save-map-btn" style="flex:1;background:#22c55e;padding:6px;font-size:11px;">💾 Save</button>
+                            <button id="export-map-btn" style="flex:1;background:#8b5cf6;padding:6px;font-size:11px;">📤 Export</button>
+                        </div>
+                        <div style="display:flex;gap:4px;margin-top:3px;">
+                            <button id="load-map-btn" style="flex:1;background:#3b82f6;padding:6px;font-size:11px;">📂 Load</button>
+                            <button id="import-map-btn" style="flex:1;background:#06b6d4;padding:6px;font-size:11px;">📥 Import</button>
+                            <input type="file" id="import-map-file" accept=".json,.kmap.json" style="display:none">
+                        </div>
+                        <div id="map-library-panel" style="display:none;margin-top:6px;max-height:180px;overflow-y:auto;background:#0f0f1a;border:1px solid #333;border-radius:4px;padding:4px;"></div>
+                        <div id="map-save-status" style="font-size:10px;color:#888;margin-top:3px;min-height:14px;"></div>
                     </div>
                 </div>
 
