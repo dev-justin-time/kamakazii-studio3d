@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dbg } from '../app/dbg.js';
 
 export class TexturePaintSystem {
     constructor(studio) {
@@ -123,7 +124,7 @@ export class TexturePaintSystem {
             this.cursor.visible = false;
         }
 
-        console.log(`Texture painting ${active ? 'enabled' : 'disabled'}`);
+        dbg.log(`Texture painting ${active ? 'enabled' : 'disabled'}`);
     }
 
     prepareObject(mesh) {

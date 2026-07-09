@@ -69,6 +69,7 @@ function report(kind, err, source) {
     };
     buffer.push(entry);
     if (buffer.length > MAX_BUFFER) buffer.shift();
+    // eslint-disable-next-line no-restricted-imports -- the global error logger must always reach stdout (even when window.DEBUG is false) so error reporting is never silenced.
     console.error('[CLIENT-ERROR]', kind, entry.message, source || '');
     if (analyticsCfg.enabled && analyticsCfg.endpoint) {
         try {
@@ -110,6 +111,7 @@ async function flush() {
         await puter.fs.write(logPath, blob);
     } catch (e) {
         buffer.unshift(...toFlush);
+        // eslint-disable-next-line no-restricted-imports -- the global error logger must always reach stdout (even when window.DEBUG is false) so error reporting is never silenced.
         console.warn('[CLIENT-ERROR] Puter FS write failed:', e);
     } finally {
         flushing = false;

@@ -296,7 +296,7 @@ export class MonetizationEngine {
       const transaction = this._buildTransaction(session);
       this._accumulateEarnings(transaction);
 
-      console.log(`[MonetizationEngine] Stripe payment finalized: ${transaction.id} — $${(transaction.amount / 100).toFixed(2)}`);
+      dbg.log(`[MonetizationEngine] Stripe payment finalized: ${transaction.id} — $${(transaction.amount / 100).toFixed(2)}`);
       return { success: true, transaction, live: true };
     }
 
@@ -327,7 +327,7 @@ export class MonetizationEngine {
     this.transactions.push(transaction);
     this._accumulateEarnings(transaction);
 
-    console.log(`[MonetizationEngine] Payment confirmed (sim): ${transaction.id} — $${(transaction.amount / 100).toFixed(2)}`);
+    dbg.log(`[MonetizationEngine] Payment confirmed (sim): ${transaction.id} — $${(transaction.amount / 100).toFixed(2)}`);
     return { success: true, transaction, live: false };
   }
 
@@ -374,7 +374,7 @@ export class MonetizationEngine {
     const current = this.pendingEarnings.get(creatorId) || 0;
     this.pendingEarnings.set(creatorId, Math.max(0, current - tx.creatorEarnings));
 
-    console.log(`[MonetizationEngine] Refund processed: ${transactionId}`);
+    dbg.log(`[MonetizationEngine] Refund processed: ${transactionId}`);
     return { success: true, transaction: tx };
   }
 
@@ -436,10 +436,10 @@ export class MonetizationEngine {
     setTimeout(() => {
       payout.status = 'completed';
       payout.completedAt = Date.now();
-      console.log(`[MonetizationEngine] Payout completed: ${payout.id} — $${(payout.amount / 100).toFixed(2)}`);
+      dbg.log(`[MonetizationEngine] Payout completed: ${payout.id} — $${(payout.amount / 100).toFixed(2)}`);
     }, 3000);
 
-    console.log(`[MonetizationEngine] Payout requested: ${payout.id} — $${(payout.amount / 100).toFixed(2)}`);
+    dbg.log(`[MonetizationEngine] Payout requested: ${payout.id} — $${(payout.amount / 100).toFixed(2)}`);
     return { success: true, payout };
   }
 

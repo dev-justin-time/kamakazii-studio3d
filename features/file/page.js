@@ -145,7 +145,6 @@ function buildControls(container, state) {
           if (!file) return;
           const reader = new FileReader();
           reader.onload = (ev) => {
-            const statusLeft = document.getElementById('statusLeft');
             try {
               const data = JSON.parse(ev.target.result);
               if (window.ProModelerApp) {

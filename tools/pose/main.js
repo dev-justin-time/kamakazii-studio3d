@@ -23,6 +23,7 @@ import './roundbox.js';
 import './lighting_presets.js';
 import './physics_integration.js';
 import './vr_interactions.js';
+import { dbg } from '../../app/dbg.js';
 
 const room = new WebsimSocket(); // Persistent DB for animations
 let scene, camera, renderer, controls;
@@ -414,7 +415,7 @@ function init() {
 
     // Load saved animations from persistent DB
     loadSavedAnimations().catch(err => {
-        console.warn('Failed to load saved animations:', err);
+        dbg.warn('Failed to load saved animations:', err);
     });
 
     // Start animation loop
@@ -437,7 +438,7 @@ function initAudio() {
         isAudioInitialized = true;
         setNextRandomHitTime();
     } catch (e) {
-        console.error("Web Audio API is not supported in this browser");
+        dbg.error("Web Audio API is not supported in this browser");
         isAudioEnabled = false; // Disable audio features if not supported
         audioToggleButton.style.display = 'none';
     }
@@ -450,7 +451,7 @@ async function loadSound(url) {
         const arrayBuffer = await response.arrayBuffer();
         return await audioContext.decodeAudioData(arrayBuffer);
     } catch (error) {
-        console.error(`Failed to load sound: ${url}`, error);
+        dbg.error(`Failed to load sound: ${url}`, error);
         return null;
     }
 }
@@ -605,7 +606,7 @@ function exportToGLB() {
             saveArrayBuffer(result, 'humanoid-animation.glb');
         },
         function (error) {
-            console.error('An error happened during GLTF export:', error);
+            dbg.error('An error happened during GLTF export:', error);
             alert("Export failed. See console for details.");
         },
         options
@@ -682,7 +683,7 @@ async function loadModelFromFile(file) {
         addImportedModelToScene(norm.wrapper, file.name);
         frameAtDistance(camera, controls, norm.bboxCenter, 10, 35, 25);
     } catch (err) {
-        console.error('Error loading model:', err);
+        dbg.error('Error loading model:', err);
         alert('Failed to load model. See console for details.');
     }
 }
@@ -1589,13 +1590,13 @@ async function loadSavedAnimations() {
         const animations = room.collection('animation').getList() || [];
         // getList returns newest-to-oldest; we keep that but provide a small console summary for debugging.
         if (animations.length > 0) {
-            console.log(`Loaded ${animations.length} saved animation(s) from DB. Most recent:`, animations[0].title || animations[0].id);
+            dbg.log(`Loaded ${animations.length} saved animation(s) from DB. Most recent:`, animations[0].title || animations[0].id);
         } else {
-            console.log('No saved animations found in DB.');
+            dbg.log('No saved animations found in DB.');
         }
         // Optionally you could populate a UI list here for users to pick saved animations.
     } catch (err) {
-        console.warn('Error while fetching saved animations:', err);
+        dbg.warn('Error while fetching saved animations:', err);
     }
 }
 
@@ -1644,14 +1645,14 @@ async function loadAnimationFromJson() {
                 keyframes: result.keyframes,
                 source: 'import',
             });
-            console.log('Imported animation saved to DB.');
+            dbg.log('Imported animation saved to DB.');
         } catch (dbErr) {
-            console.warn('Failed to save imported animation to DB:', dbErr);
+            dbg.warn('Failed to save imported animation to DB:', dbErr);
         }
 
         closeJsonImportModal(); // Close modal on success
     } catch (error) {
-        console.error("Error parsing or loading animation from JSON:", error);
+        dbg.error("Error parsing or loading animation from JSON:", error);
         alert(`Failed to load animation: ${error.message}`);
     }
 }
@@ -1738,7 +1739,7 @@ Initial pose (in degrees and world units): ${JSON.stringify(initialPoseForLlm)}`
             throw new Error("Invalid response format from AI.");
         }
     } catch (error) {
-        console.error("Error generating animation:", error);
+        dbg.error("Error generating animation:", error);
         alert("Failed to generate animation. Please check the console for details.");
     } finally {
         loadingIndicator.style.display = 'none';

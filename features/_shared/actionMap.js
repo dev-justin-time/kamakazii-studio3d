@@ -15,6 +15,7 @@ function _getEngine() { return _getApp()?.engine || _getApp(); }
 
 /** Status bar helper — shows messages in the bottom-left status element */
 export function status(msg) {
+// eslint-disable-next-line no-restricted-syntax -- legacy status() helper predates the status-bar refactor. Migrate to writeStatus() once all callsites are audited for their `[Feature]`-prefixed log format.
   const el = document.getElementById('status-left');
   if (el) el.textContent = msg;
   dbg.log('[Feature]', msg);

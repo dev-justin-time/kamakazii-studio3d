@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { dbg } from '../app/dbg.js';
 
 /* Basic scene + renderer */
 const canvas = document.getElementById('c');
@@ -45,7 +46,7 @@ const gltfLoader = new GLTFLoader();
 gltfLoader.load('/player.glb', (g) => {
   playerGLTF = g;
 }, undefined, (err) => {
-  console.warn('player.glb failed to load', err);
+  dbg.warn('player.glb failed to load', err);
 });
 
 /* State */
@@ -332,7 +333,7 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
       if (it.scale) m.scale.fromArray(it.scale);
     });
   } catch (err) {
-    console.error('import failed', err);
+    dbg.error('import failed', err);
   }
   e.target.value = '';
 });
@@ -443,10 +444,10 @@ function enterPlayMode() {
           o.userData._scriptFns.push({ type: 'lua', state: L });
         } else {
           // fallback: skip compilation but keep code for reference
-          console.warn('Fengari not available; Lua scripts will not run');
+          dbg.warn('Fengari not available; Lua scripts will not run');
         }
       } catch (err) {
-        console.warn('script compile error', err);
+        dbg.warn('script compile error', err);
       }
     });
   });
@@ -703,7 +704,7 @@ function animate(time) {
                 // consume error and continue
                 lua.lua_pop(L, 1);
                 // don't spam console, but log once
-                console.warn('Lua script runtime error:', err);
+                dbg.warn('Lua script runtime error:', err);
               } else {
                 // after successful run, attempt to read back ctx.self.x/y/z to update object position
                 // fetch global ctx? We passed a table on the stack that was consumed; to read results,

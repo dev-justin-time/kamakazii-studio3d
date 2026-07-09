@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { dbg } from '../../app/dbg.js';
 
 /**
  * Base Command class - expects execute and undo methods to be defined by subclasses.
@@ -35,7 +36,7 @@ export class ApplyBevelModifierCommand extends Command {
 
     execute(context) {
         if (!(this.object instanceof THREE.Mesh)) {
-            console.warn(`Bevel modifier requires a Mesh. Object: ${this.object.name} is ${this.object.type}`);
+            dbg.warn(`Bevel modifier requires a Mesh. Object: ${this.object.name} is ${this.object.type}`);
             return;
         }
 

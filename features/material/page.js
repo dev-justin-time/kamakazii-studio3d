@@ -3,6 +3,7 @@
  * Color, Metalness, Roughness, Emissive, Opacity, Wireframe toggle, Presets
  */
 import { renderControls } from '../_shared/renderControls.js';
+import { writeStatus } from '../../app/status-bar.js';
 
 /**
  * Apply material properties to the selected object.
@@ -289,8 +290,7 @@ const meta = {
           wireframe: !!mat.wireframe,
         }, null, 2);
         navigator.clipboard?.writeText(data);
-        const statusEl = document.getElementById('status-left');
-        if (statusEl) statusEl.textContent = 'Material copied to clipboard';
+        writeStatus('Material copied to clipboard');
       },
     },
   ],

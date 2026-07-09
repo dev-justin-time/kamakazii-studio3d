@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { dbg } from '../app/dbg.js';
 
 export class ProceduralSystem {
     constructor(studio) {
@@ -21,12 +22,12 @@ export class ProceduralSystem {
         // Defensive check: studio and scene required for procedural additions
         if (!this.studio || !this.studio.scene) {
             this._inited = false;
-            setTimeout(() => { try { this.init(); } catch(e){ console.warn('ProceduralSystem retry failed', e); } }, 250);
-            console.warn('ProceduralSystem: studio.scene not ready, retrying init shortly.');
+            setTimeout(() => { try { this.init(); } catch(e){ dbg.warn('ProceduralSystem retry failed', e); } }, 250);
+            dbg.warn('ProceduralSystem: studio.scene not ready, retrying init shortly.');
             return;
         }
 
-        console.log('Procedural generation system initialized');
+        dbg.log('Procedural generation system initialized');
     }
 
     generateTerrain(size, resolution, scale, height) {
@@ -58,7 +59,7 @@ export class ProceduralSystem {
         this.studio.scene.add(terrain);
         this.studio.objects.push(terrain);
         
-        console.log(`Generated terrain (${resolution}x${resolution})`);
+        dbg.log(`Generated terrain (${resolution}x${resolution})`);
         return terrain;
     }
 
@@ -114,7 +115,7 @@ export class ProceduralSystem {
         this.studio.scene.add(group);
         this.studio.objects.push(group);
 
-        console.log('Generated tree');
+        dbg.log('Generated tree');
         return group;
     }
 
@@ -150,7 +151,7 @@ export class ProceduralSystem {
         this.studio.scene.add(rock);
         this.studio.objects.push(rock);
 
-        console.log('Generated rock');
+        dbg.log('Generated rock');
         return rock;
     }
 
@@ -184,7 +185,7 @@ export class ProceduralSystem {
         this.studio.scene.add(group);
         this.studio.objects.push(group);
 
-        console.log(`Generated building (${floors} floors)`);
+        dbg.log(`Generated building (${floors} floors)`);
         return group;
     }
 
@@ -254,7 +255,7 @@ export class ProceduralSystem {
         this.studio.scene.add(mapGroup);
         this.studio.objects.push(mapGroup);
 
-        console.log('Generated complete game map');
+        dbg.log('Generated complete game map');
         return mapGroup;
     }
 }

@@ -6,6 +6,7 @@
  */
 
 import * as THREE from 'three';
+import { dbg } from '../app/dbg.js';
 
 const WEATHER_DEFAULTS = {
   rain:      { count: 3000, speed: 12, size: 0.05, color: 0xaaccff, spread: 40, height: 20 },
@@ -221,7 +222,7 @@ export class WeatherSystem {
     const vf = this.studio?.volumetricFog;
     if (!vf) {
       // VolumetricFog not yet loaded — fall back to basic FogExp2
-      console.warn('[WeatherSystem] VolumetricFog not available, using basic FogExp2');
+      dbg.warn('[WeatherSystem] VolumetricFog not available, using basic FogExp2');
       const fallback = this._getFogExp2Fallback(preset, intensity, opts);
       if (fallback && this.studio?.scene) {
         this.studio.scene.fog = fallback;

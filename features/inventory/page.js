@@ -11,6 +11,7 @@
  */
 
 import { DEFAULT_MODELS } from '../../app/defaultModels.js';
+import { dbg } from '../../app/dbg.js';
 
 // Pure-DOM render — popupContent lives in features/_shared/popupPage.js
 // but we implement inline here for tighter styling control of the grid.
@@ -198,7 +199,7 @@ function _renderCard(model, studio, container) {
       btn.style.background = '#a04040';
       btn.disabled = false;
       // eslint-disable-next-line no-console
-      console.error('Load failed:', err);
+      dbg.error('Load failed:', err);
     }
   });
   card.appendChild(btn);

@@ -22,6 +22,8 @@
  *   STRIPE_PUBLISHABLE_KEY  — pk_... from Stripe dashboard
  *   CHECKOUT_ENDPOINT       — your backend /create-checkout-session URL
  */
+import { dbg } from '../app/dbg.js';
+
 
 export class StripeBridge {
   constructor(options = {}) {
@@ -65,7 +67,7 @@ export class StripeBridge {
         return 'live';
       }
     }
-    console.info('[StripeBridge] No publishable key configured — using simulated payments');
+    dbg.info('[StripeBridge] No publishable key configured — using simulated payments');
     return 'simulated';
   }
 
@@ -103,10 +105,10 @@ export class StripeBridge {
 
         this._stripe = window.Stripe(this.publishableKey);
         this._loaded = true;
-        console.log('[StripeBridge] Stripe.js loaded (live mode)');
+        dbg.log('[StripeBridge] Stripe.js loaded (live mode)');
         return this._stripe;
       } catch (err) {
-        console.error('[StripeBridge] Failed to load Stripe:', err.message);
+        dbg.error('[StripeBridge] Failed to load Stripe:', err.message);
         this.mode = 'simulated';
         this._loaded = true;
         return null;
@@ -151,7 +153,7 @@ export class StripeBridge {
       await this.loadStripe();
       if (!this._stripe) {
         // Stripe failed to load, fall back to simulated
-        console.warn('[StripeBridge] Stripe not available, falling back to simulated payment');
+        dbg.warn('[StripeBridge] Stripe not available, falling back to simulated payment');
         return this._createSimulatedSession(params);
       }
 
@@ -209,7 +211,7 @@ export class StripeBridge {
         }
       };
     } catch (err) {
-      console.error('[StripeBridge] Live checkout failed:', err);
+      dbg.error('[StripeBridge] Live checkout failed:', err);
       return {
         success: false,
         error: err.message || 'Checkout failed. Please try again.',
@@ -236,7 +238,7 @@ export class StripeBridge {
       simulatorNote: 'Simulated payment — no real transaction processed'
     };
 
-    console.log(`[StripeBridge] Simulated session created: ${sessionId} — $${(params.amount / 100).toFixed(2)}`);
+    dbg.log(`[StripeBridge] Simulated session created: ${sessionId} — $${(params.amount / 100).toFixed(2)}`);
     return { success: true, session };
   }
 
@@ -252,7 +254,7 @@ export class StripeBridge {
    */
   async mountPaymentElement(container, clientSecret, onSuccess) {
     if (this.mode !== 'live') {
-      console.warn('[StripeBridge] Payment Element requires live mode');
+      dbg.warn('[StripeBridge] Payment Element requires live mode');
       return { success: false, error: 'Stripe not configured' };
     }
 
@@ -289,7 +291,7 @@ export class StripeBridge {
         });
 
         if (error) {
-          console.error('[StripeBridge] PaymentElement error:', error.message);
+          dbg.error('[StripeBridge] PaymentElement error:', error.message);
           if (this.onPaymentError) this.onPaymentError(error);
         } else {
           if (this.onPaymentSuccess) this.onPaymentSuccess();
@@ -299,7 +301,7 @@ export class StripeBridge {
 
       return { success: true, element: paymentElement };
     } catch (err) {
-      console.error('[StripeBridge] Payment Element mount failed:', err);
+      dbg.error('[StripeBridge] Payment Element mount failed:', err);
       return { success: false, error: err.message };
     }
   }

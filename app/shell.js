@@ -1,6 +1,8 @@
 /**
  * Studio Shell — top icon bar + centered 3D viewport + popup page system.
  */
+import { writeStatus } from './status-bar.js';
+
 export class StudioShell {
   constructor(state) {
     this.state = state;
@@ -358,12 +360,9 @@ export class StudioShell {
 
     // Update status bar with match count (if there's a filter active)
     if (this._searchInput) {
-      const statusLeft = document.getElementById('status-left');
-      if (statusLeft) {
-        statusLeft.textContent = showAll
-          ? 'Ready'
-          : `${matchCount} tool${matchCount !== 1 ? 's' : ''} match${matchCount !== 1 ? '' : 'es'} "${query}"`;
-      }
+      writeStatus(showAll
+        ? 'Ready'
+        : `${matchCount} tool${matchCount !== 1 ? 's' : ''} match${matchCount !== 1 ? '' : 'es'} "${query}"`);
     }
   }
 
@@ -422,9 +421,8 @@ export class StudioShell {
 
   /** Update status bar text */
   setStatus(left, right) {
-    const l = document.getElementById('status-left');
+    if (left) writeStatus(left);
     const r = document.getElementById('status-right');
-    if (l && left) l.textContent = left;
     if (r && right) r.textContent = right;
   }
 

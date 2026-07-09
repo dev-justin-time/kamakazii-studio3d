@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { VertexSpatialHash } from './SculptSystem.js';
+import { dbg } from '../app/dbg.js';
 
 export class VertexPaintSystem {
     constructor(studio) {
@@ -46,7 +47,7 @@ export class VertexPaintSystem {
             this.cursor.visible = false;
         }
 
-        console.log(`Vertex painting ${enabled ? 'enabled' : 'disabled'}`);
+        dbg.log(`Vertex painting ${enabled ? 'enabled' : 'disabled'}`);
     }
 
     setBrushColor(hex) {

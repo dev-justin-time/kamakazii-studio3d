@@ -8,6 +8,7 @@
  */
 
 import * as THREE from 'three';
+import { dbg } from '../../app/dbg.js';
 
 const PLUGIN_NAME = 'Physics Pro Toolkit';
 
@@ -17,12 +18,12 @@ const PLUGIN_NAME = 'Physics Pro Toolkit';
  */
 export async function executePhysicsPro(editor) {
   if (!editor) {
-    console.warn('[PhysicsPro] No editor available');
+    dbg.warn('[PhysicsPro] No editor available');
     return;
   }
 
   if (!editor.physicsSystem) {
-    console.warn('[PhysicsPro] PhysicsSystem not found on editor');
+    dbg.warn('[PhysicsPro] PhysicsSystem not found on editor');
     return;
   }
 
@@ -106,7 +107,7 @@ function addVehicle(editor) {
     editor.ui?.log(`${PLUGIN_NAME}: Vehicle created! Use ps.setVehicleInput(0, steer, engine, brake)`, 'success');
     if (editor.selectObject) editor.selectObject(chassis);
   } catch (e) {
-    console.warn('[PhysicsPro] addVehicle failed:', e);
+    dbg.warn('[PhysicsPro] addVehicle failed:', e);
     editor.ui?.log(`${PLUGIN_NAME}: Vehicle error — ${e.message}`, 'error');
   }
 }
@@ -124,7 +125,7 @@ function addCloth(editor) {
       editor.ui?.log(`${PLUGIN_NAME}: Cloth creation failed (cannon-es may be in shim mode)`, 'error');
     }
   } catch (e) {
-    console.warn('[PhysicsPro] addCloth failed:', e);
+    dbg.warn('[PhysicsPro] addCloth failed:', e);
     editor.ui?.log(`${PLUGIN_NAME}: Cloth error — ${e.message}`, 'error');
   }
 }
@@ -147,7 +148,7 @@ function addSoftBody(editor) {
       editor.ui?.log(`${PLUGIN_NAME}: Soft body failed (cannon-es may be in shim mode)`, 'warning');
     }
   } catch (e) {
-    console.warn('[PhysicsPro] addSoftBody failed:', e);
+    dbg.warn('[PhysicsPro] addSoftBody failed:', e);
     editor.ui?.log(`${PLUGIN_NAME}: Soft body error — ${e.message}`, 'error');
   }
 }
@@ -259,7 +260,7 @@ function addRagdoll(editor) {
     editor.ui?.log(`${PLUGIN_NAME}: Ragdoll created with 6 hinge joints!`, 'success');
     if (editor.selectObject) editor.selectObject(group);
   } catch (e) {
-    console.warn('[PhysicsPro] addRagdoll failed:', e);
+    dbg.warn('[PhysicsPro] addRagdoll failed:', e);
     editor.ui?.log(`${PLUGIN_NAME}: Ragdoll error — ${e.message}`, 'error');
   }
 }
@@ -273,7 +274,7 @@ function addFluid(editor) {
     ps.createFluid(pos, 150);
     editor.ui?.log(`${PLUGIN_NAME}: Fluid particle splash created!`, 'success');
   } catch (e) {
-    console.warn('[PhysicsPro] addFluid failed:', e);
+    dbg.warn('[PhysicsPro] addFluid failed:', e);
     editor.ui?.log(`${PLUGIN_NAME}: Fluid error — ${e.message}`, 'error');
   }
 }

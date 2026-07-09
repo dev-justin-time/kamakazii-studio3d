@@ -166,7 +166,7 @@ export class CreatorPortal {
         }
       } else {
         // Log a visible warning so it's debuggable rather than silently skipped
-        console.warn('[CreatorPortal] AssetBundler not available on editor — cloud upload skipped. ' +
+        dbg.warn('[CreatorPortal] AssetBundler not available on editor — cloud upload skipped. ' +
                      'Ensure editor.assetBundler is wired (e.g. via SystemManager.initBundler())');
       }
     }
@@ -343,7 +343,7 @@ export class CreatorPortal {
       // Pull latest from cloud on init
       await this._syncFromCloud();
     } else {
-      console.info('[CreatorPortal] Puter.js KV not available — using localStorage only');
+      dbg.info('[CreatorPortal] Puter.js KV not available — using localStorage only');
     }
     // Also load from localStorage as immediate fallback
     this._loadFromLocalStorage();

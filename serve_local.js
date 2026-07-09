@@ -1,3 +1,5 @@
+import { dbg } from 'app/dbg.js';
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -40,5 +42,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Serving Studio 3D at http://localhost:${PORT}`);
+  dbg.log(`Serving Studio 3D at http://localhost:${PORT}`);
 });

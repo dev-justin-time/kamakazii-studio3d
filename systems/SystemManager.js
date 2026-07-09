@@ -1,3 +1,5 @@
+import { dbg } from '../app/dbg.js';
+
 export class SystemManager {
   constructor(editor) {
     this.editor = editor;
@@ -31,7 +33,7 @@ export class SystemManager {
         await s.init();
       }
     } catch (e) {
-      console.warn(`SystemManager.safeInit failed for ${key}:`, e);
+      dbg.warn(`SystemManager.safeInit failed for ${key}:`, e);
     }
   }
 
@@ -51,7 +53,7 @@ export class SystemManager {
       try {
         if (s && typeof s.update === 'function') s.update(delta);
       } catch (e) {
-        console.warn(`SystemManager.updateAll: update failed for ${k}`, e);
+        dbg.warn(`SystemManager.updateAll: update failed for ${k}`, e);
       }
     });
   }

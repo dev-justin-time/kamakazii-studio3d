@@ -53,6 +53,7 @@ import{
 
 import { playSound } from './audio-manager.js';
 import { normalizeImport, frameAtDistance } from '../../editor/import-normalize.js';
+import { dbg } from '../../app/dbg.js';
 
 let scene, camera, renderer, controls;
 let gltfLoader;
@@ -329,7 +330,7 @@ class LoadMultipleGLBCommand extends Command {
                     context.addMessageToChatHistory(context.languageConfig[context.currentLanguage].ui.modelLoaded(fileData.filename), 'ai');
                     resolve(wrapper);
                 }, undefined, (error) => {
-                    console.error(`An error happened while loading GLB ${fileData.filename}:`, error);
+                    dbg.error(`An error happened while loading GLB ${fileData.filename}:`, error);
                     context.addMessageToChatHistory(context.languageConfig[context.currentLanguage].ui.modelLoadError(error.message), 'ai');
                     reject(error);
                 });
@@ -364,7 +365,7 @@ class LoadMultipleGLBCommand extends Command {
                 context.setActiveObject(loadedGroups[loadedGroups.length - 1]); 
             }
         } catch (error) {
-            console.error("One or more models failed to load.", error);
+            dbg.error("One or more models failed to load.", error);
             context.updateObjectCountUI();
             context.updateSceneCollectionUI();
             const lastSuccessful = this.loadedModels.length > 0 ? this.loadedModels[this.loadedModels.length - 1] : null;
@@ -498,7 +499,7 @@ class JoinObjectsCommand extends Command {
 
     execute(context) {
         if (this.objectsToJoin.length < 2) {
-            console.warn("JoinObjectsCommand: Requires at least two objects to join.");
+            dbg.warn("JoinObjectsCommand: Requires at least two objects to join.");
             context.addMessageToChatHistory(context.languageConfig[context.currentLanguage].ui.joinNotEnoughObjects, 'ai'); 
             return; 
         }
@@ -517,7 +518,7 @@ class JoinObjectsCommand extends Command {
                 obj.userData.isJoinedChild = true;
                 obj.userData.joinedParentUUID = this.newGroup.uuid;
             } else {
-                console.warn(`Object ${obj.name} (UUID: ${obj.uuid}) was not in scene when attempting to join.`);
+                dbg.warn(`Object ${obj.name} (UUID: ${obj.uuid}) was not in scene when attempting to join.`);
             }
         });
         
@@ -553,7 +554,7 @@ class JoinObjectsCommand extends Command {
                 delete objInScene.userData.isJoinedChild;
                 delete objInScene.userData.joinedParentUUID;
             } else {
-                console.warn(`Object ${object.name} (UUID: ${object.uuid}) not found in scene during undo of join operation.`);
+                dbg.warn(`Object ${object.name} (UUID: ${object.uuid}) not found in scene during undo of join operation.`);
             }
         });
 
@@ -622,7 +623,7 @@ function executeCommand(command) {
     if (commandHistory.length > MAX_HISTORY_SIZE) {
         const oldestCommand = commandHistory.shift();
     }
-    console.log(`Executed command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
+    dbg.log(`Executed command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
 }
 
 function undoLastCommand() {
@@ -658,7 +659,7 @@ function undoLastCommand() {
     command.undo(commandContext);
     redoStack.push(command);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.undoSuccess(command.name), 'ai');
-    console.log(`Undone command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
+    dbg.log(`Undone command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
     isUndoingRedoing = false;
 }
 
@@ -695,7 +696,7 @@ function redoLastCommand() {
     command.execute(commandContext);
     commandHistory.push(command);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.redoSuccess(command.name), 'ai');
-    console.log(`Redone command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
+    dbg.log(`Redone command: ${command.name}. History size: ${commandHistory.length}, Redo size: ${redoStack.length}`);
     isUndoingRedoing = false;
 }
 
@@ -746,7 +747,7 @@ export function init() {
     };
 
     const onFontLoadError = (error, fontName) => {
-        console.error(`An error occurred loading ${fontName} font:`, error);
+        dbg.error(`An error occurred loading ${fontName} font:`, error);
         addMessageToChatHistory(languageConfig[currentLanguage].ui.fontLoadError(fontName, error.message), 'ai');
         loadedFontsCount++; 
         if (loadedFontsCount === totalFontsToLoad) {
@@ -1183,7 +1184,7 @@ export function init() {
             height: height,
             url: url
         });
-        console.log(`Image "${finalName}" added to data store.`);
+        dbg.log(`Image "${finalName}" added to data store.`);
         
         // The texture name in the object should be the final, unique name
         if (texture.name !== finalName) {
@@ -1291,7 +1292,7 @@ function setupMenuAndFileInput() {
                 executeCommand(command);
             })
             .catch(error => {
-                console.error("Error reading files:", error);
+                dbg.error("Error reading files:", error);
                 addMessageToChatHistory(languageConfig[currentLanguage].ui.modelLoadError("Error reading one or more files."), 'ai');
             });
         
@@ -1358,7 +1359,7 @@ async function exportGLBModel() {
         URL.revokeObjectURL(url);
         addMessageToChatHistory(languageConfig[currentLanguage].ui.exportSuccess(fileName), 'ai');
     }, (error) => {
-        console.error('An error occurred during GLB export:', error);
+        dbg.error('An error occurred during GLB export:', error);
         addMessageToChatHistory(languageConfig[currentLanguage].ui.exportError(error.message), 'ai');
     }, { binary: true }); 
 }
@@ -1479,11 +1480,11 @@ function handleSingleClickSelection(event) {
         setActiveObject(newActiveObject); 
     } else if (!newActiveObject && activeObject) {
         setActiveObject(null); 
-        console.log(languageConfig[currentLanguage].ui.selectCleared);
+        dbg.log(languageConfig[currentLanguage].ui.selectCleared);
     } else if (newActiveObject && newActiveObject === activeObject) {
         if (!isModelingModeActive || activeTool === 'select' || activeTool === 'add-cube' || activeTool === 'add-text3d' || activeTool === 'box-select') {
             setActiveObject(null); 
-            console.log(languageConfig[currentLanguage].ui.objectDeselected);
+            dbg.log(languageConfig[currentLanguage].ui.objectDeselected);
         }
     }
 }
@@ -1640,7 +1641,7 @@ function deleteSelectedObjects() {
     setActiveObject(null); 
 
     addMessageToChatHistory(languageConfig[currentLanguage].ui.objectDeleted, 'ai');
-    console.log('Selected object(s) deleted.');
+    dbg.log('Selected object(s) deleted.');
 }
 
 function onKeyDown(event) {
@@ -1790,10 +1791,10 @@ function copyActiveObject() {
         pasteObjectMenuItem.classList.remove('disabled'); 
         pasteObjectMenuItem.style.pointerEvents = 'auto';
         addMessageToChatHistory(languageConfig[currentLanguage].ui.objectCopied(activeObject.name || "Unnamed Object"), 'ai');
-        console.log(`Copied object: ${activeObject.name}`);
+        dbg.log(`Copied object: ${activeObject.name}`);
     } else {
         addMessageToChatHistory(languageConfig[currentLanguage].ui.noObjectToCopy, 'ai');
-        console.log('No object selected to copy.');
+        dbg.log('No object selected to copy.');
     }
 }
 
@@ -1826,7 +1827,7 @@ function pasteObject() {
                 } else if (childData.type === 'Group') {
                     newChild = new THREE.Group(); 
                 } else {
-                    console.warn(`Unsupported child type for copy/paste: ${childData.type}`);
+                    dbg.warn(`Unsupported child type for copy/paste: ${childData.type}`);
                     return;
                 }
 
@@ -1887,10 +1888,10 @@ function pasteObject() {
         
         setActiveObject(newObject);
         addMessageToChatHistory(languageConfig[currentLanguage].ui.objectPasted(newObject.name), 'ai');
-        console.log(`Pasted new object: ${newObject.name}`);
+        dbg.log(`Pasted new object: ${newObject.name}`);
     } else {
         addMessageToChatHistory(languageConfig[currentLanguage].ui.noObjectToPaste, 'ai');
-        console.log('Nothing to paste.');
+        dbg.log('Nothing to paste.');
     }
 }
 
@@ -2140,7 +2141,7 @@ function addCubeToScene(fromAddMenu = false) {
     setActiveObject(cube); 
 
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addCube, 'ai');
-    console.log('New cube added to scene:', cube);
+    dbg.log('New cube added to scene:', cube);
 
     if (isModelingModeActive) {
         setTool('translate');
@@ -2159,7 +2160,7 @@ function addUVSphereToScene() {
 
     setActiveObject(sphere);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addUVSphere, 'ai');
-    console.log('New UV Sphere added to scene:', sphere);
+    dbg.log('New UV Sphere added to scene:', sphere);
     hideAddMeshMenu();
 }
 
@@ -2171,7 +2172,7 @@ function addIcoSphereToScene() {
 
     setActiveObject(icosphere);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addIcoSphere, 'ai');
-    console.log('New Ico Sphere added to scene:', icosphere);
+    dbg.log('New Ico Sphere added to scene:', icosphere);
     hideAddMeshMenu();
 }
 
@@ -2183,7 +2184,7 @@ function addConeToScene() {
 
     setActiveObject(cone);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addCone, 'ai');
-    console.log('New Cone added to scene:', cone);
+    dbg.log('New Cone added to scene:', cone);
     hideAddMeshMenu();
 }
 
@@ -2195,7 +2196,7 @@ function addTorusToScene() {
 
     setActiveObject(torus);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addTorus, 'ai');
-    console.log('New Torus added to scene:', torus);
+    dbg.log('New Torus added to scene:', torus);
     hideAddMeshMenu();
 }
 
@@ -2207,7 +2208,7 @@ function addCapsuleToScene() {
 
     setActiveObject(capsule);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addCapsule, 'ai');
-    console.log('New Capsule added to scene:', capsule);
+    dbg.log('New Capsule added to scene:', capsule);
     hideAddMeshMenu();
 }
 
@@ -2219,7 +2220,7 @@ function addCircleToScene() {
 
     setActiveObject(circle);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addCircle, 'ai');
-    console.log('New Circle added to scene:', circle);
+    dbg.log('New Circle added to scene:', circle);
     hideAddMeshMenu();
 }
 
@@ -2231,7 +2232,7 @@ function addTriangleToScene() {
 
     setActiveObject(trianglePrism);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addTriangle, 'ai');
-    console.log('New Triangle (Prism) added to scene:', trianglePrism);
+    dbg.log('New Triangle (Prism) added to scene:', trianglePrism);
     hideAddMeshMenu();
 }
 
@@ -2243,7 +2244,7 @@ function addGridToScene() {
 
     setActiveObject(gridPlane);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addGrid, 'ai');
-    console.log('New Grid (Plane) added to scene:', gridPlane);
+    dbg.log('New Grid (Plane) added to scene:', gridPlane);
     hideAddMeshMenu();
 }
 
@@ -2255,7 +2256,7 @@ function addSquarePyramidToScene() {
 
     setActiveObject(pyramid);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addSquarePyramid, 'ai');
-    console.log('New Square Pyramid added to scene:', pyramid);
+    dbg.log('New Square Pyramid added to scene:', pyramid);
     hideAddMeshMenu();
 }
 
@@ -2267,7 +2268,7 @@ function addCylinderToScene() {
 
     setActiveObject(cylinder);
     addMessageToChatHistory(languageConfig[currentLanguage].ui.addCylinder, 'ai');
-    console.log('New Cylinder added to scene:', cylinder);
+    dbg.log('New Cylinder added to scene:', cylinder);
     hideAddMeshMenu();
 }
 
@@ -2902,7 +2903,7 @@ function removeSelectedMaterial() {
     const materials = Array.isArray(targetObject.material) ? targetObject.material : [targetObject.material];
 
     if (materials.length <= 1) {
-        console.log("Cannot remove the last material.");
+        dbg.log("Cannot remove the last material.");
         return;
     }
 
@@ -3358,7 +3359,7 @@ function onShaderAddNodeButtonClick(event) {
     event.preventDefault();
     event.stopPropagation(); 
 
-    console.log("Add Shader Node button clicked!");
+    dbg.log("Add Shader Node button clicked!");
     hideContextMenu();
     hideAddMeshMenu();
     hideSceneCollectionContextMenu();
@@ -3631,7 +3632,7 @@ User prompt: "a small, cozy cabin in a snowy forest"
         playSound("/screw_apply.mp3");
         
     } catch (error) {
-        console.error("Error generating 3D model:", error);
+        dbg.error("Error generating 3D model:", error);
         addMessageToChatHistory("AI Assistant: Error generating 3D model. Creating a simple interpretation instead.", 'ai');
         
         const fallbackModel = generateFallbackModel(promptText);
@@ -3834,7 +3835,7 @@ function create3DTextObject() {
 
     if (!selectedFont) {
         addMessageToChatHistory(languageConfig[currentLanguage].ui.fontNotLoadedError(selectedFontName), 'ai');
-        console.error(`Font "${selectedFontName}" not loaded yet.`);
+        dbg.error(`Font "${selectedFontName}" not loaded yet.`);
         return;
     }
 
@@ -3911,7 +3912,7 @@ function joinSelectedObjects() {
 
 function removeModifier(object, modifierType) {
     if (!object || !object.userData.modifiers || !object.userData.modifiers[modifierType]) {
-        console.warn(`Attempted to remove non-existent modifier: ${modifierType} from ${object.name}`);
+        dbg.warn(`Attempted to remove non-existent modifier: ${modifierType} from ${object.name}`);
         return;
     }
 
@@ -3933,7 +3934,7 @@ function removeModifier(object, modifierType) {
             command = new RemoveBendModifierCommand(object, currentModifierParams);
             break;
         default:
-            console.error(`Unknown modifier type: ${modifierType}`);
+            dbg.error(`Unknown modifier type: ${modifierType}`);
             return;
     }
 

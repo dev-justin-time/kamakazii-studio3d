@@ -21,12 +21,12 @@ import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';
 import { DEFAULT_MODELS, findDefaultModel, resolveDefaultPackage } from './defaultModels.js';
+import { writeStatus } from './status-bar.js';
 
 // ── Log helper ──
-const log = (msg, type = 'info') => {
-  if (typeof window !== 'undefined' && window.DEBUG) console.log(`[Studio] ${msg}`);
-  const el = document.getElementById('statusLeft');
-  if (el) el.textContent = msg;
+const log = (msg) => {
+  if (typeof window !== 'undefined' && window.DEBUG) dbg.log(`[Studio] ${msg}`);
+  writeStatus(msg);
 };
 
 export class Studio {
@@ -1743,6 +1743,7 @@ export class Studio {
     // but the flag is here so future private assets can disable).
     if (!this._motionExtractionDisabled) {
       import('../editor/motionStorage.js').then(({ extractAndSaveMotions }) => {
+import { dbg } from './dbg.js';
         extractAndSaveMotions(clips, root?.name || 'imported', root?.name || '').then(({ added, skipped }) => {
           if (added > 0) log(`💾 Extracted ${added} new motion(s) to motion database (${skipped} duplicate skipped)`);
         });

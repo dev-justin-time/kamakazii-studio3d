@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { playSound } from './audio-manager.js'; // Import playSound
+import { dbg } from '../../app/dbg.js';
 
 // UV Editor variables
 let uvScene, uvCamera, uvRenderer, uvCanvas;
@@ -85,7 +86,7 @@ export function createDefaultShaderConnection() {
             createPermanentConnection(principledBSDFOutputPort, materialOutputNodeSurfacePort);
         }
     } else {
-        console.warn("Could not create default shader connection: port elements not found.");
+        dbg.warn("Could not create default shader connection: port elements not found.");
     }
 }
 
@@ -263,7 +264,7 @@ function loadUVImageFromFile(file) {
             }
         };
         img.onerror = () => {
-            console.error(`Error loading image: ${file.name}`);
+            dbg.error(`Error loading image: ${file.name}`);
             _addMessageToChatHistory(_languageConfig[(_languageConfig.en ? 'en' : 'ja')].ui.uvImageLoadError(file.name), 'ai');
         };
         img.src = imageUrl;
@@ -425,7 +426,7 @@ async function generateImageFromPrompt(params) {
         });
 
     } catch (error) {
-        console.error("Error generating image from prompt:", error);
+        dbg.error("Error generating image from prompt:", error);
         _addMessageToChatHistory(_languageConfig[(_languageConfig.en ? 'en' : 'ja')].ui.uvImageGenerateError, 'ai');
         generateBlankOrGridUVImage({ name, width, height, color: getRandomColorHex(), type: "blank" });
     }
@@ -694,7 +695,7 @@ export function updateShaderNodeMaterialInputs(material) {
 
 export function updateMaterialOutputNodeMaterial(material) {
     if (!materialOutputNodeElement) {
-        console.warn("Material Output node element not found in shader editor. Cannot set material reference.");
+        dbg.warn("Material Output node element not found in shader editor. Cannot set material reference.");
         return;
     }
     materialOutputNodeElement.materialRef = material;
@@ -1132,7 +1133,7 @@ export function createImageTextureNodeDOM(x, y) {
                     _addMessageToChatHistory(_languageConfig[(_languageConfig.en ? 'en' : 'ja')].ui.shaderImageLoaded(file.name), 'ai');
                 };
                 img.onerror = () => {
-                    console.error(`Error loading image for node: ${file.name}`);
+                    dbg.error(`Error loading image for node: ${file.name}`);
                     _addMessageToChatHistory(_languageConfig[(_languageConfig.en ? 'en' : 'ja')].ui.shaderImageLoadError(file.name), 'ai');
                 };
                 img.src = imageUrl;
@@ -1834,7 +1835,7 @@ export function updateUVEditor(selectedObject) {
         const index = selectedObject.geometry.index;
 
         if (!index) {
-             console.warn("UV Editor: Geometry does not have an index attribute, cannot draw UV wireframe from indices.");
+             dbg.warn("UV Editor: Geometry does not have an index attribute, cannot draw UV wireframe from indices.");
         }
 
         const positions = [];
@@ -1893,7 +1894,7 @@ function deleteShaderNode(nodeElement) {
 
     const headerSpan = nodeElement.querySelector('.node-header span');
     if (!headerSpan) {
-        console.warn("Could not find header span in node to be deleted.");
+        dbg.warn("Could not find header span in node to be deleted.");
         return;
     }
     const headerText = headerSpan.textContent.trim();

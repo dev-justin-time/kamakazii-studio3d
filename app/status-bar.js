@@ -68,5 +68,8 @@ export function writeStatus(msg) {
  */
 export function surfaceError(err, prefix = 'Error') {
   dbg.error(prefix, err);
-  writeStatus(`${prefix}: ${err?.message || err}`);
+  // Fall back to 'unknown' so a .catch(null) renders "Open failed: unknown"
+  // instead of the noisy "Open failed: null".
+  const msg = err?.message || err || 'unknown';
+  writeStatus(`${prefix}: ${msg}`);
 }

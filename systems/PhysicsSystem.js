@@ -58,7 +58,7 @@ export class PhysicsSystem {
     }
 
     if (typeof window !== 'undefined' && window.ProModelerShims?.PhysicsPlaceholder?.forceShim) {
-      console.info('PhysicsSystem: PhysicsPlaceholder forced; skipping dynamic cannon-es import.');
+      dbg.info('PhysicsSystem: PhysicsPlaceholder forced; skipping dynamic cannon-es import.');
       this.CANNON = null;
     } else {
       try {

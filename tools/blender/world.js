@@ -23,6 +23,7 @@ import {
 } from './world/shared.js';
 
 import {
+import { dbg } from '../../app/dbg.js';
   syncHighScore, submitLeaderboard, getHighScore, getUsername,
   createMultiplayerRoom, captureScreenshot, saveReplay,
   saveGameSnapshot, loadGameSnapshot, deleteGameSnapshot,
@@ -75,7 +76,7 @@ async function loadImpactBuffer() {
         loader.load(t.url, resolve, undefined, reject);
       });
       if (t.isFallback) {
-        console.warn(`Impact sound: ${IMPACT_SOUND_URL} not found; using airplane.wav as one-shot burst fallback.`);
+        dbg.warn(`Impact sound: ${IMPACT_SOUND_URL} not found; using airplane.wav as one-shot burst fallback.`);
       }
       return { buffer: buf, isFallback: t.isFallback };
     } catch (e) {
@@ -85,7 +86,7 @@ async function loadImpactBuffer() {
   // Both file loads failed — synthesize an explosion via Web Audio API.
   // White noise burst with rapid exponential decay sounds like a sharp
   // impact / explosion, much better than silence.
-  console.warn('Impact sound: all files failed; synthesizing explosion via Web Audio API.', lastErr);
+  dbg.warn('Impact sound: all files failed; synthesizing explosion via Web Audio API.', lastErr);
   try {
     // Create an off-line AudioContext to render the synthesized buffer.
     // OfflineAudioContext is supported in all modern browsers and doesn't
@@ -129,10 +130,10 @@ async function loadImpactBuffer() {
     noiseSource.stop(now + duration);
 
     const renderedBuffer = await offlineCtx.startRendering();
-    console.log('Impact sound: synthesized explosion successfully.');
+    dbg.log('Impact sound: synthesized explosion successfully.');
     return { buffer: renderedBuffer, isFallback: true };
   } catch (synthErr) {
-    console.warn('Impact sound: synthesis also failed; crash will be silent.', synthErr);
+    dbg.warn('Impact sound: synthesis also failed; crash will be silent.', synthErr);
     return null;
   }
 }
@@ -325,9 +326,9 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
         audio.setVolume(0.7);
         obj.userData.engineAudioReady = true;
         // The start button click is a user gesture; resetGame() in startLoop will play it.
-      }, undefined, err => console.warn('Airplane sound load failed', err));
+      }, undefined, err => dbg.warn('Airplane sound load failed', err));
     } catch (e) {
-      console.warn('attachEngineSoundTo failed', e);
+      dbg.warn('attachEngineSoundTo failed', e);
     }
   }
 
@@ -347,7 +348,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
       propeller = built.propeller;
     }
   } catch (e) {
-    console.warn('GLB load failed, falling back to procedural plane', e);
+    dbg.warn('GLB load failed, falling back to procedural plane', e);
   }
   if (!plane) {
     const built = buildPlane();
@@ -384,7 +385,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
       if (impactAudio.isPlaying) impactAudio.stop();
       impactAudio.setLoop(false);
       impactAudio.play();
-    } catch (e) { console.warn('playImpact failed', e); }
+    } catch (e) { dbg.warn('playImpact failed', e); }
   }
   function stopImpact() {
     try {
@@ -484,7 +485,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     }).then(() => {
       presenceAccumulator = 0;
     }).catch(e => {
-      if (force) console.warn('pushPresence failed', e);
+      if (force) dbg.warn('pushPresence failed', e);
     });
   }
 
@@ -528,11 +529,11 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
         });
       });
     } catch (e) {
-      console.warn('initMultiplayer failed', e);
+      dbg.warn('initMultiplayer failed', e);
       room = null;
     }
   }
-  initMultiplayer().catch(err => console.warn('multiplayer init error', err));
+  initMultiplayer().catch(err => dbg.warn('multiplayer init error', err));
 
   // ---- PlaneController — single steering authority ----
   // Constructor pulls bounds from TUNING, so the steering clamps and the
@@ -681,7 +682,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
   function startLoop(rendererObj) {
     _rendererObj = rendererObj;
     if (!rendererObj || !rendererObj.renderer) {
-      console.warn('startLoop: rendererObj missing; aborting', rendererObj);
+      dbg.warn('startLoop: rendererObj missing; aborting', rendererObj);
       return;
     }
     const renderer = rendererObj.renderer;
@@ -896,7 +897,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
         renderer.clearDepth();
         renderer.render(scene, camera);
       } catch (err) {
-        console.error('world loop error:', err);
+        dbg.error('world loop error:', err);
         if (raf) { cancelAnimationFrame(raf); raf = null; }
       }
     }
@@ -1033,7 +1034,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
         won: state.won,
         timestamp: Date.now(),
       });
-    } catch (e) { console.warn('cloud score sync failed', e); }
+    } catch (e) { dbg.warn('cloud score sync failed', e); }
     try {
       if (room && room.collection) {
         await room.collection('score').create({
@@ -1042,7 +1043,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
           timestamp: new Date().toISOString(),
         });
       }
-    } catch (e) { console.warn('persisting score failed', e); }
+    } catch (e) { dbg.warn('persisting score failed', e); }
 
     // ---- Replay Save for notable runs ----
     // Notable = new personal best, mission success, or score >= 3000
@@ -1074,7 +1075,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
         await saveReplay(replay, screenshotDataUrl);
         // Notify UI that a new replay was saved
         try { window.dispatchEvent(new CustomEvent('replaySaved', { detail: replay })); } catch (_) {}
-      } catch (e) { console.warn('replay save failed', e); }
+      } catch (e) { dbg.warn('replay save failed', e); }
     }
 
     pushPresence(true);
@@ -1195,7 +1196,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
       list.push({ from: author || 'player', idea: text, ts: Date.now() });
       localStorage.setItem('kamikazziBriefings', JSON.stringify(list));
       window.dispatchEvent(new Event('ideasUpdated'));
-    } catch (e) { console.warn('addIdea failed', e); }
+    } catch (e) { dbg.warn('addIdea failed', e); }
   }
 
   async function sendIdeasToPuter() {
@@ -1224,7 +1225,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     } else if (typeof aiOutput === 'object') {
       parsed = aiOutput;
     }
-    if (!parsed) { console.warn('applyGameChanges: parse failed', aiOutput); return; }
+    if (!parsed) { dbg.warn('applyGameChanges: parse failed', aiOutput); return; }
 
     if (typeof parsed.spawnInterval === 'number') {
       state.spawnInterval = Math.max(6, parsed.spawnInterval);
@@ -1257,7 +1258,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
     if (parsed.persistIdeasConfig) {
       try { localStorage.setItem('kamikazziBriefingsCfg', JSON.stringify(parsed)); } catch (_) {}
     }
-    console.log('applyGameChanges applied', parsed);
+    dbg.log('applyGameChanges applied', parsed);
   }
 
   try { window.applyGameChanges = applyGameChanges; } catch (_) {}
@@ -1270,14 +1271,14 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
       const text = latest.idea || latest.text || (typeof latest === 'string' ? latest : '');
       if (!text) return;
       if (typeof window.generateFromComment !== 'function') {
-        console.warn('ideasUpdated: generateFromComment unavailable');
+        dbg.warn('ideasUpdated: generateFromComment unavailable');
         return;
       }
       const aiOutput = await window.generateFromComment(text);
       if (!aiOutput) return;
       try { applyGameChanges(aiOutput); }
-      catch (err) { console.warn('ideasUpdated: applyGameChanges failed', err); }
-    } catch (err) { console.warn('ideasUpdated handler error', err); }
+      catch (err) { dbg.warn('ideasUpdated: applyGameChanges failed', err); }
+    } catch (err) { dbg.warn('ideasUpdated handler error', err); }
   });
 
   // ---- plane skin applier ----
@@ -1309,7 +1310,7 @@ export async function createWorld({ scene, camera, domElement, planeModelUrl = n
           m.needsUpdate = true;
         });
       });
-    }, undefined, err => console.warn('applyPlaneSkin failed', err));
+    }, undefined, err => dbg.warn('applyPlaneSkin failed', err));
   }
 
   // ---- snapshot (cross-device resume) ----

@@ -79,7 +79,7 @@ export class PluginRegistry {
           sel.geometry = result.geometry;
           editor.ui?.log(`Auto-Retopology: Done! ${result.resultFaces} faces (collapsed ${result.collapsed} edges)`, 'success');
         } catch(e) {
-          console.error('[Auto-Retopology]', e);
+          dbg.error('[Auto-Retopology]', e);
           editor?.ui?.log(`Auto-Retopology failed: ${e.message}`, 'error');
         }
       }
@@ -102,7 +102,7 @@ export class PluginRegistry {
         }
       },
       execute: () => {
-        console.log('[Nature Pack] Generating procedural vegetation...');
+        dbg.log('[Nature Pack] Generating procedural vegetation...');
       }
     });
 
@@ -126,8 +126,9 @@ export class PluginRegistry {
               data.action === 'add-fluid') {
             // Forward to the Physics Pro module
             import('./plugins/PhysicsPro.js').then(({ executePhysicsPro }) => {
+import { dbg } from '../app/dbg.js';
               if (data.action === 'physics-pro') executePhysicsPro(editor);
-            }).catch(e => console.warn('[PhysicsPro]', e));
+            }).catch(e => dbg.warn('[PhysicsPro]', e));
           }
         },
         onSceneReady: () => {
@@ -144,7 +145,7 @@ export class PluginRegistry {
           const { executePhysicsPro } = await import('./plugins/PhysicsPro.js');
           await executePhysicsPro(editor);
         } catch (e) {
-          console.error('[PhysicsPro] execute failed:', e);
+          dbg.error('[PhysicsPro] execute failed:', e);
           editor.ui?.log('Physics Pro Toolkit failed to execute', 'error');
         }
       },
@@ -212,7 +213,7 @@ export class PluginRegistry {
             editor.ui?.log(`Voxel Engine: Created empty ${clampedRes}³ grid. Use editor._voxelEngine.sphereBrush/boxBrush to sculpt.`, 'info');
           }
         } catch(e) {
-          console.error('[Voxel Engine]', e);
+          dbg.error('[Voxel Engine]', e);
           editor?.ui?.log(`Voxel Engine failed: ${e.message}`, 'error');
         }
       }
@@ -298,7 +299,7 @@ export class PluginRegistry {
     if (manifest.hooks) {
       for (const [hookName, handler] of Object.entries(manifest.hooks)) {
         if (!this.knownHooks.includes(hookName)) {
-          console.warn(`[PluginRegistry] Unknown hook "${hookName}" in plugin "${manifest.id}"`);
+          dbg.warn(`[PluginRegistry] Unknown hook "${hookName}" in plugin "${manifest.id}"`);
           continue;
         }
         if (!this.hooks.has(hookName)) {
@@ -321,7 +322,7 @@ export class PluginRegistry {
     // Fire onInstall hook
     this._emit('onPluginInstalled', { pluginId: manifest.id, manifest });
 
-    console.log(`[PluginRegistry] Installed: ${manifest.name} v${manifest.version}`);
+    dbg.log(`[PluginRegistry] Installed: ${manifest.name} v${manifest.version}`);
     return { success: true, pluginId: manifest.id, manifest };
   }
 
@@ -351,7 +352,7 @@ export class PluginRegistry {
     this.installed.delete(pluginId);
 
     this._emit('onPluginUninstalled', { pluginId });
-    console.log(`[PluginRegistry] Uninstalled: ${pluginId}`);
+    dbg.log(`[PluginRegistry] Uninstalled: ${pluginId}`);
     return { success: true, pluginId };
   }
 
@@ -446,7 +447,7 @@ export class PluginRegistry {
         const result = handler(data);
         results.push({ pluginId, result });
       } catch (err) {
-        console.warn(`[PluginRegistry] Hook "${hookName}" failed in plugin "${pluginId}":`, err);
+        dbg.warn(`[PluginRegistry] Hook "${hookName}" failed in plugin "${pluginId}":`, err);
         results.push({ pluginId, error: err.message });
       }
     }
@@ -602,7 +603,7 @@ export class PluginRegistry {
       }
     } catch (err) {
       // Network unavailable — fall through to local catalog
-      console.info(`[PluginRegistry] Network fetch failed for "${storeId}", using local catalog:`, err.message);
+      dbg.info(`[PluginRegistry] Network fetch failed for "${storeId}", using local catalog:`, err.message);
     }
 
     // 4. Fallback to bundled local catalog (offline-first)
@@ -755,7 +756,7 @@ export class PluginRegistry {
     for (const [id, data] of Object.entries(state || {})) {
       if (!this.plugins.has(id)) {
         this.install(data.manifest).catch(err =>
-          console.warn(`[PluginRegistry] Failed to restore plugin "${id}":`, err)
+          dbg.warn(`[PluginRegistry] Failed to restore plugin "${id}":`, err)
         );
       }
       if (data.enabled === false) {

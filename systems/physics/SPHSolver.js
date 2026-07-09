@@ -23,6 +23,7 @@
 
 import { SPHNeighborhood } from './SPHNeighborhood.js';
 import { poly6, spikyGrad, viscosityLap, KERNEL_RADIUS } from './SPHKernels.js';
+import { dbg } from '../../app/dbg.js';
 
 // ── Constants ──
 
@@ -541,6 +542,6 @@ export class SPHSolver {
     if (height !== undefined) this.bounds.maxY = height;
     if (floor !== undefined) this.bounds.minY = floor;
     if (damping !== undefined) this.bounds.damping = Math.min(0, Math.max(-1, damping));
-    console.log(`[SPHSolver] Bounds set: ${min}–${max}, Y: ${this.bounds.minY}–${this.bounds.maxY}, damping: ${this.bounds.damping}`);
+    dbg.log(`[SPHSolver] Bounds set: ${min}–${max}, Y: ${this.bounds.minY}–${this.bounds.maxY}, damping: ${this.bounds.damping}`);
   }
 }

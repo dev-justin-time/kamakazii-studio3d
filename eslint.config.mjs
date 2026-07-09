@@ -100,6 +100,30 @@ export default [
           message:
             "Bypass risk: `X ?? Promise.resolve()` evaluates the LHS synchronously; sync throws bypass the .catch chain. Use `Promise.resolve().then(() => X)` instead.",
         },
+        {
+          // ── Status-bar DOM access lock-in ──
+          // Forbidden pattern: `document.getElementById('statusLeft')`.
+          // All status-bar writes MUST go through writeStatus() / surfaceError()
+          // from app/status-bar.js so the ID-convention handling and silent
+          // no-op behaviour stay in one place.
+          //
+          // The selector only fires on string-literal arguments, so the
+          // helper itself (`getElementById(id)` where `id` is an iteration
+          // variable over STATUS_IDS) is naturally exempt — no eslint-disable
+          // needed there.  The only existing exception is
+          // features/_shared/actionMap.js's legacy `status()` helper, which
+          // has a per-line disable with a comment explaining why.
+          selector:
+            "CallExpression[callee.object.name='document'][callee.property.name='getElementById'][arguments.0.value='statusLeft']",
+          message:
+            "Use writeStatus() or surfaceError() from app/status-bar.js instead of raw document.getElementById('statusLeft'). The helper handles both ID conventions and is a silent no-op when no element exists.",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='document'][callee.property.name='getElementById'][arguments.0.value='status-left']",
+          message:
+            "Use writeStatus() or surfaceError() from app/status-bar.js instead of raw document.getElementById('status-left'). The helper handles both ID conventions and is a silent no-op when no element exists.",
+        },
       ],
       // eval() and new Function() — covered by the built-in rules.
       'no-eval': 'error',
@@ -119,7 +143,10 @@ export default [
       // The codebase uses `dbg.*` (from app/dbg.js) gated by window.DEBUG
       // instead of raw `console.*`. Flag any direct console usage.
       'no-restricted-imports': [
-        'warn',
+        // Error severity (was 'warn' before the studio-wide console→dbg
+        // migration).  The codebase now uses `dbg.*` everywhere; keeping
+        // the rule as a warning would let new raw-console calls slip in.
+        'error',
         {
           paths: [
             {

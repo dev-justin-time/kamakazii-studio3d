@@ -11,9 +11,9 @@ import JSZip from 'jszip';
 // ── Debug helper — all console.warn/error pass through here, gated by window.DEBUG ──
 const DBG = typeof window !== 'undefined' && window.DEBUG === true;
 const dbg = {
-  warn: (...args) => { if (DBG) console.warn(...args); },
-  error: (...args) => { if (DBG) console.error(...args); },
-  log: (...args) => { if (DBG) console.log(...args); },
+  warn: (...args) => { if (DBG) dbg.warn(...args); },
+  error: (...args) => { if (DBG) dbg.error(...args); },
+  log: (...args) => { if (DBG) dbg.log(...args); },
 };
 
 // Import Systems
@@ -39,6 +39,7 @@ import { MarketplaceUI } from '../marketplace/marketplace-ui.js';
 // Import normalisation: scales + floor-aligns + centres + yaws imported models
 // so they always land on the floor at a sensible size facing the camera.
 import { frameAtDistance } from '../editor/import-normalize.js';
+import { dbg } from './dbg.js';
 
 class ProModelerStudio {
     constructor() {
