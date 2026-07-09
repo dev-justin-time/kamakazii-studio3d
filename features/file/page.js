@@ -137,20 +137,29 @@ function buildControls(container, state) {
           if (!file) return;
           const reader = new FileReader();
           reader.onload = (ev) => {
+            const statusLeft = document.getElementById('statusLeft');
             try {
               const data = JSON.parse(ev.target.result);
               if (window.ProModelerApp) {
                 if (typeof window.ProModelerApp.loadProject === 'function') {
-                  window.ProModelerApp.loadProject(data);
+                  // Defer the call into .then() so a synchronous throw inside
+                  // loadProject also gets caught. Promise.resolve(fn()) would
+                  // evaluate fn() first and bypass the .catch on a sync throw.
+                  // Promise.resolve() then handles async rejection uniformly.
+                  Promise.resolve().then(() => window.ProModelerApp.loadProject(data)).catch((err) => {
+                    dbg.error('[File] loadProject failed:', err);
+                    if (statusLeft) statusLeft.textContent = `Open failed: ${err.message || err}`;
+                  });
                 } else if (data.objects) {
-                  // Best-effort fallback so an older engine.js doesn't silently drop the data
+                  // Best-effort fallback for older engines. Surface both to log + status bar
+                  // so the failure is visible without DevTools open.
                   window.ProModelerApp.objects = [];
                   dbg.warn('[File] Studio lacks loadProject — ingested objects dropped on the floor');
+                  if (statusLeft) statusLeft.textContent = 'Open: studio lacks loadProject; data dropped';
                 }
               }
             } catch (err) {
               dbg.error('[File] Failed to parse project:', err);
-              const statusLeft = document.getElementById('statusLeft');
               if (statusLeft) statusLeft.textContent = `Open failed: ${err.message || err}`;
             }
           };
@@ -192,12 +201,16 @@ function importFromFile() {
     if (fileList.length === 0) return;
     const fileMap = Object.fromEntries(fileList.map((f) => [f.name, URL.createObjectURL(f)]));
     const mainFile = fileList.find((f) => /\.(gltf|glb|obj|stl)$/i.test(f.name)) || fileList[0];
+    // studio.importModel is `async` so it always returns a Promise with .catch.
+    // The optional-chain (?.) may yield undefined if the studio isn't mounted
+    // or lacks an importModel method — guard only against that, not against the
+    // catch method itself.
     const importPromise = window.ProModelerApp?.importModel?.({
       url: fileMap[mainFile.name],
       files: fileMap,
       name: mainFile.name,
     });
-    if (importPromise && typeof importPromise.catch === 'function') {
+    if (importPromise) {
       importPromise.catch((err) => {
         dbg.error('[File] Import failed:', err);
         const statusLeft = document.getElementById('statusLeft');

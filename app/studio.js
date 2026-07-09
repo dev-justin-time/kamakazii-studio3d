@@ -2703,7 +2703,6 @@ export class Studio {
       const cube = new THREE.Mesh(geo, mat);
       cube.castShadow = true;
       cube.receiveShadow = true;
-      cube.position.y = 0;
       cube.name = 'Cube';
       this.scene.add(cube);
       this.objects.push(cube);
@@ -2714,18 +2713,19 @@ export class Studio {
 
     // Multi-load path - scatter picked starter assets around the origin.
     log(`New project: seeding ${starterSlugs.length} starter asset(s)`);
-    this._defaultModelLoading = (async () => {
-      try {
-        const results = await this.loadDefaultModels(starterSlugs);
-        const ok = results.filter(r => r && r.root).length;
-        log(`New project: seeded ${ok}/${starterSlugs.length} starter asset(s)`);
-        if (ok > 0 && typeof this.frameAll === 'function') this.frameAll();
-      } catch (err) {
-        log(`New project starter load failed: ${err && err.message ? err.message : err}`, 'error');
-      } finally {
-        this._defaultModelLoading = null;
+    log(`New project: seeding ${starterSlugs.length} starter asset(s)`);
+    try {
+      const results = await this.loadDefaultModels(starterSlugs);
+      const ok = results.filter(r => r && r.root).length;
+      const failed = results.filter(r => !r || !r.root);
+      log(`New project: seeded ${ok}/${starterSlugs.length} starter asset(s)`);
+      if (failed.length) {
+        log(`New project: failed to load ${failed.map(r => r.slug).join(', ')}`, 'error');
       }
-    })();
+      if (ok > 0 && typeof this.frameAll === 'function') this.frameAll();
+    } catch (err) {
+      log(`New project starter load failed: ${err && err.message ? err.message : err}`, 'error');
+    }
   }
 
   /**
@@ -2749,21 +2749,29 @@ export class Studio {
     const results = [];
     for (let i = 0; i < slugs.length; i++) {
       const slug = slugs[i];
+      let root = null;
+      let loadErr = null;
       try {
-        // loadDefaultModel awaits the previous _defaultModelLoading, so
-        // successive calls serialise cleanly without re-entering the guard.
-        const root = await this.loadDefaultModel(slug);
-        if (root && root.position) {
+        root = await this.loadDefaultModel(slug);
+      } catch (err) {
+        loadErr = err && err.message ? err.message : String(err);
+      }
+      if (!root) {
+        // loadDefaultModel resolves with null on unknown slug OR internal failure;
+        // surface a useful error instead of silent zero.
+        if (!loadErr) loadErr = `loadDefaultModel returned null for ${slug} (unknown slug or silent load failure)`;
+        results.push({ slug, root: null, error: loadErr });
+        log(`Starter load failed for ${slug}: ${loadErr}`, 'error');
+      } else {
+        if (root.position) {
           const col = i % cols;
           const row = Math.floor(i / cols);
-          // loadDefaultModel already aligned to ground (y = -0.5); preserve
-          // that and only offset x/z so characters do not stack on origin.
+          // loadDefaultModel already aligned the model to ground; preserve y
+          // and only offset x/z so characters do not stack on origin.
           root.position.x = (col - (cols - 1) / 2) * cellSize;
           root.position.z = (row - (rows - 1) / 2) * cellSize;
         }
         results.push({ slug, root });
-      } catch (err) {
-        results.push({ slug, root: null, error: err && err.message ? err.message : String(err) });
       }
     }
     return results;
