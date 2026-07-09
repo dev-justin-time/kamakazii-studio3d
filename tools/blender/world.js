@@ -3,7 +3,7 @@
 // with domain managers (buildings, powerups, explosions, ideas, multiplayer).
 
 
-import * as THREE from 'https://esm.sh/three@0.128.0';
+import * as THREE from 'three';
 
 import { buildPlane, loadPlaneFromGLB } from './world/plane/factory.js';
 import { PlaneController } from './world/plane/controller.js';
