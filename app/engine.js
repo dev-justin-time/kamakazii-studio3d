@@ -8,6 +8,14 @@ import JSZip from 'jszip';
 // nipplejs is now used inside InputManager, not here directly
 // import nipplejs from 'nipplejs'; 
 
+// ── Debug helper — all console.warn/error pass through here, gated by window.DEBUG ──
+const DBG = typeof window !== 'undefined' && window.DEBUG === true;
+const dbg = {
+  warn: (...args) => { if (DBG) console.warn(...args); },
+  error: (...args) => { if (DBG) console.error(...args); },
+  log: (...args) => { if (DBG) console.log(...args); },
+};
+
 // Import Systems
 import { ProceduralSystem } from '../systems/ProceduralSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
@@ -355,7 +363,7 @@ class ProModelerStudio {
             self._volumetricFogInstance = fog;
             return fog;
         }).catch(err => {
-            console.warn('[Engine] VolumetricFog init failed:', err);
+            dbg.warn('[Engine] VolumetricFog init failed:', err);
             self._volumetricFogInstance = null;
             return null;
         });
@@ -371,7 +379,7 @@ class ProModelerStudio {
             create: async () => {
                 const fog = await self._volumetricFogReady;
                 if (!fog) {
-                    console.warn('[Engine] VolumetricFog not available');
+                    dbg.warn('[Engine] VolumetricFog not available');
                     self.ui.log('Volumetric fog unavailable — resources failed to load', 'error');
                     return;
                 }
@@ -527,7 +535,7 @@ class ProModelerStudio {
                 get() { return self.selectedObject; },
             });
             return self.modelIO;
-        }).catch(err => { console.warn('[ModelIO] lazy init failed:', err); return null; });
+        }).catch(err => { dbg.warn('[ModelIO] lazy init failed:', err); return null; });
 
         this.importExport = {
             importModel: async (source) => {
@@ -671,7 +679,7 @@ class ProModelerStudio {
     _mountMarketplace() {
         const panel = document.querySelector('.marketplace-panel');
         if (!panel) {
-            console.warn('[Marketplace] .marketplace-panel not found');
+            dbg.warn('[Marketplace] .marketplace-panel not found');
             return;
         }
 
@@ -704,7 +712,7 @@ class ProModelerStudio {
 
             this.ui.log('Marketplace loaded — browse, publish, and purchase assets.', 'success');
         } catch (err) {
-            console.error('[Marketplace] Failed to initialize:', err);
+            dbg.error('[Marketplace] Failed to initialize:', err);
             panel.innerHTML = `<div class="k3d-mkt-error">
                 <i class="fas fa-exclamation-triangle"></i>
                 <h3>Failed to load Marketplace</h3>
@@ -857,10 +865,10 @@ class ProModelerStudio {
         this.morphTargets = {
             createTarget: (object, name) => {
                 if (!object.geometry) {
-                    console.warn('[Engine] morphTargets.createTarget: object has no geometry');
+                    dbg.warn('[Engine] morphTargets.createTarget: object has no geometry');
                     return;
                 }
-                console.warn('[Engine] morphTargets.createTarget is a simplified implementation — weight animation may not work as expected in complex rigs.');
+                dbg.warn('[Engine] morphTargets.createTarget is a simplified implementation — weight animation may not work as expected in complex rigs.');
                 const pos = object.geometry.attributes.position;
                 const target = pos.clone();
                 for(let i=0; i<target.count; i++) target.setY(i, target.getY(i) + Math.random()*0.5);
@@ -872,11 +880,11 @@ class ProModelerStudio {
             },
             setWeight: (object, name, weight) => {
                 if (!object) {
-                    console.warn('[Engine] morphTargets.setWeight: no object provided');
+                    dbg.warn('[Engine] morphTargets.setWeight: no object provided');
                     return;
                 }
                 if (!object.morphTargetInfluences) {
-                    console.warn('[Engine] morphTargets.setWeight: object has no morphTargetInfluences');
+                    dbg.warn('[Engine] morphTargets.setWeight: object has no morphTargetInfluences');
                     this.ui.log('Morph target weights: not available on this object', 'warning');
                     return;
                 }
@@ -1457,7 +1465,7 @@ class ProModelerStudio {
             this.ui.log(`Render complete! ${this.totalFrames} frames saved.`, 'success');
 
         } catch (err) {
-            console.error('Render error:', err);
+            dbg.error('Render error:', err);
             this.ui.log('Render failed. Check console.', 'error');
         } finally {
             // Restore state

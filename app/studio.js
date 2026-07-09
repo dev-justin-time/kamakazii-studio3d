@@ -23,7 +23,7 @@ import { WaterSystem } from '../systems/WaterSystem.js';
 
 // ── Log helper ──
 const log = (msg, type = 'info') => {
-  console.log(`[Studio] ${msg}`);
+  if (typeof window !== 'undefined' && window.DEBUG) console.log(`[Studio] ${msg}`);
   const el = document.getElementById('statusLeft');
   if (el) el.textContent = msg;
 };
