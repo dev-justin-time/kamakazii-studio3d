@@ -346,7 +346,23 @@ export const actionMap = {
     const ta = document.getElementById('scriptInput');
     if (ta) {
       try {
-        const r = eval(ta.value);
+        // SECURITY: Intentional REPL-style console for power users typing JS
+        // into the script-input textarea. Uses `new Function` (global scope)
+        // rather than `eval` (local scope) to avoid leaking the user's variables
+        // into the surrounding closure. Tries `return <code>` first to preserve
+        // the expression-result UX (e.g. `2 + 2` yields 4 in the status badge);
+        // if that throws a SyntaxError (because the user pasted multi-line
+        // statements like `let x = 1; x + 2`), falls back to executing the
+        // code as-is.
+        /* eslint-disable no-new-func */
+        let r;
+        try {
+          r = new Function('return ' + ta.value)();
+        } catch (firstErr) {
+          if (!(firstErr instanceof SyntaxError)) throw firstErr;
+          r = new Function(ta.value)();
+        }
+        /* eslint-enable no-new-func */
         status('Script: OK — ' + (r ?? 'done'));
       } catch(e) {
         status('Script Error: ' + e.message);

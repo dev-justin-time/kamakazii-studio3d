@@ -4,6 +4,7 @@
  */
 import { dbg } from '../../app/dbg.js';
 import { renderControls } from '../_shared/renderControls.js';
+import { writeStatus } from '../../app/status-bar.js';
 
 // ── Image preview state ────────────────────────────────────────────────────
 let _lastGeneratedImageUrl = null;
@@ -119,8 +120,7 @@ const meta = {
         }
 
         _addMessage(prompt, 'user');
-        const el = document.getElementById('statusLeft');
-        if (el) el.textContent = 'AI thinking...';
+        writeStatus('AI thinking...');
 
         try {
           const { aiBridge } = await import('../../app/ai-bridge.js');
@@ -131,14 +131,14 @@ const meta = {
           });
           if (result.content) {
             _addMessage(result.content, 'ai');
-            if (el) el.textContent = `AI: ${result.content.slice(0, 80)}...`;
+            writeStatus(`AI: ${result.content.slice(0, 80)}...`);
           } else {
             _addMessage('No response (bridge not ready)', 'error');
-            if (el) el.textContent = 'AI: No response (bridge not ready)';
+            writeStatus('AI: No response (bridge not ready)');
           }
         } catch (e) {
           _addMessage(`Error: ${e.message}`, 'error');
-          if (el) el.textContent = `AI error: ${e.message}`;
+          writeStatus(`AI error: ${e.message}`);
         }
       },
     },
@@ -212,13 +212,12 @@ const meta = {
         const sizeSelect = document.querySelector('#popupContent [data-key="image-size"] select');
         const size = sizeSelect?.value || '512x512';
 
-        const statusEl = document.getElementById('statusLeft');
         const preview = document.getElementById('aiImagePreview');
         const status = document.getElementById('aiImageStatus');
 
         if (status) status.textContent = 'Generating...';
         if (preview) preview.style.display = 'none';
-        if (statusEl) statusEl.textContent = '🎨 Generating image via Puter AI...';
+        writeStatus('🎨 Generating image via Puter AI...');
 
         try {
           const puterClient = await _getPuterClient();
@@ -253,7 +252,7 @@ const meta = {
           }
           _addMessage(`Image generation error: ${e.message}`, 'error');
         }
-        if (statusEl) statusEl.textContent = 'Ready';
+        writeStatus('Ready');
       },
     },
     {
@@ -298,8 +297,7 @@ const meta = {
         const voiceSelect = document.querySelector('#popupContent [data-key="tts-engine"] select');
         const useVoice = voiceSelect?.value === 'browser';
 
-        const statusEl = document.getElementById('statusLeft');
-        if (statusEl) statusEl.textContent = '🔊 Speaking...';
+        writeStatus('🔊 Speaking...');
 
         try {
           const puterClient = await _getPuterClient();
@@ -314,7 +312,7 @@ const meta = {
           dbg.warn('[AI Page] TTS error:', e);
           _addMessage(`TTS error: ${e.message}`, 'error');
         }
-        if (statusEl) statusEl.textContent = 'Ready';
+        writeStatus('Ready');
       },
     },
     {
@@ -326,8 +324,7 @@ const meta = {
         try {
           if (window.speechSynthesis) speechSynthesis.cancel();
         } catch (_) {}
-        const statusEl = document.getElementById('statusLeft');
-        if (statusEl) statusEl.textContent = 'Ready';
+        writeStatus('Ready');
       },
     },
     { key: 'sep8', label: '──────────', type: 'label' },

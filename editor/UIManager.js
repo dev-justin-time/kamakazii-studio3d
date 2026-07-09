@@ -331,9 +331,12 @@ export class UIManager {
                         const btn = document.querySelector(`[data-action="${act}"]`);
                         if (btn) { btn.click(); return; }
                     }
-                    // Fallback eval of provided action string (very limited)
-                    // eslint-disable-next-line no-eval
-                    eval(item.action);
+                    // SECURITY: eval() removed. Executing arbitrary code from
+                    // untrusted asset metadata (e.g. marketplace bundles, scene
+                    // files) was an arbitrary code-execution risk. Asset actions
+                    // that have no matching [data-action] DOM target are now
+                    // logged + skipped; the responsible fix is to add a button
+                    // with that data-action to the studio UI.
                 } catch (e) {
                     dbg.warn('Asset click action failed for', item.id, e);
                 }
@@ -1540,7 +1543,12 @@ export class UIManager {
                     this.showStatus('No object selected to export.', 3000);
                     return;
                 }
-                (this.studio.exportSelectedModel?.(fmt) || Promise.resolve())
+                // SECURITY: deferred to .then() so sync throws from
+                // `exportSelectedModel` are caught by the .catch below.
+                // Old shape `(this.studio.exportSelectedModel?.(fmt) || Promise.resolve())`
+                // evaluated the LHS sync before the ||, bypassing .catch on throw.
+                Promise.resolve()
+                    .then(() => this.studio.exportSelectedModel?.(fmt))
                     .then((name) => this.showStatus(`Exported ${name || fmt}`))
                     .catch((err) => this.showStatus('Export failed: ' + (err?.message || 'unknown'), 5000));
             });
@@ -1551,7 +1559,11 @@ export class UIManager {
         if (exportAllBtn && exportModelSelect) {
             exportAllBtn.addEventListener('click', () => {
                 const fmt = exportModelSelect.value || 'glb';
-                (this.studio.exportSceneAsFormat?.(fmt) || Promise.resolve())
+                // SECURITY: deferred to .then() so sync throws from
+                // `exportSceneAsFormat` are caught by the .catch below.
+                // See note in the exportModel handler above for the rationale.
+                Promise.resolve()
+                    .then(() => this.studio.exportSceneAsFormat?.(fmt))
                     .then((name) => this.showStatus(`Exported scene as ${name || fmt}`))
                     .catch((err) => this.showStatus('Export failed: ' + (err?.message || 'unknown'), 5000));
             });

@@ -13,6 +13,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 
 import { dbg } from './dbg.js';
+import { writeStatus } from './status-bar.js';
 import puterLib, {
   resolvePuter,
   isPuterAvailable,
@@ -128,8 +129,7 @@ export async function generateImage(prompt, options = {}) {
     return null;
   }
 
-  const statusEl = document.getElementById('statusLeft');
-  if (!options.silent && statusEl) statusEl.textContent = '🎨 Generating image...';
+  if (!options.silent) writeStatus('🎨 Generating image...');
 
   try {
     const url = await ai.generateImage(prompt, {
@@ -138,15 +138,15 @@ export async function generateImage(prompt, options = {}) {
     });
 
     if (url) {
-      if (!options.silent && statusEl) statusEl.textContent = '✅ Image generated';
+      if (!options.silent) writeStatus('✅ Image generated');
       return url;
     }
 
-    if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation failed';
+    if (!options.silent) writeStatus('⚠️ Image generation failed');
     return null;
   } catch (e) {
     dbg.warn('[puter-client] generateImage error:', e);
-    if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation error';
+    if (!options.silent) writeStatus('⚠️ Image generation error');
     return null;
   }
 }
@@ -187,8 +187,7 @@ export async function speak(text, options = {}) {
   if (!_puterInitialized) await initPuter();
   if (!text || !text.trim()) return false;
 
-  const statusEl = document.getElementById('statusLeft');
-  if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking...';
+  if (!options.silent) writeStatus('🔊 Speaking...');
 
   // Option 1: Use Puter AI TTS
   if (!options.voice) {
@@ -205,7 +204,7 @@ export async function speak(text, options = {}) {
           source.buffer = audioBuffer;
           source.connect(ctx.destination);
           source.start(0);
-          if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking';
+          if (!options.silent) writeStatus('🔊 Speaking');
           return true;
         }
       }
@@ -222,14 +221,14 @@ export async function speak(text, options = {}) {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
       speechSynthesis.speak(utterance);
-      if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking (browser)';
+      if (!options.silent) writeStatus('🔊 Speaking (browser)');
       return true;
     } catch (e) {
       dbg.warn('[puter-client] Web Speech TTS failed:', e);
     }
   }
 
-  if (!options.silent && statusEl) statusEl.textContent = '⚠️ TTS unavailable';
+  if (!options.silent) writeStatus('⚠️ TTS unavailable');
   return false;
 }
 

@@ -17,6 +17,7 @@
 import { dbg } from '../../app/dbg.js';
 import { DEFAULT_MODELS } from '../../app/defaultModels.js';
 import { renderControls } from '../_shared/renderControls.js';
+import { writeStatus, surfaceError } from '../../app/status-bar.js';
 
 /**
  * Build the full controls array.  The New Project section is rendered
@@ -51,7 +52,12 @@ function buildControls(container, state) {
   emptyBtn.style.cssText = 'width:100%;margin-bottom:10px;padding:6px;background:#3a3a4a;color:#eee;border:none;border-radius:4px;cursor:pointer;font-size:12px;';
   emptyBtn.textContent = '⚪ Empty Project (default cube)';
   emptyBtn.addEventListener('click', () => {
-    if (window.ProModelerApp) window.ProModelerApp.newProject();
+    if (window.ProModelerApp) {
+      // Defer the call into .then() so a sync throw inside newProject also
+      // gets caught. (Promise.resolve(syncCall) evaluates synchronously and
+      // would bypass .catch on a sync throw.)
+      Promise.resolve().then(() => window.ProModelerApp.newProject()).catch(err => surfaceError(err, 'New project failed'));
+    }
     closeIfHooked(container);
   });
   newSection.appendChild(emptyBtn);
@@ -97,19 +103,21 @@ function buildControls(container, state) {
       .filter(Boolean);
     if (picked.length === 0) {
       dbg.warn('[File] No starter assets checked — falling back to empty project');
-      if (window.ProModelerApp) window.ProModelerApp.newProject();
+      if (window.ProModelerApp) {
+        // Defer the call into .then() so a sync throw inside newProject also
+        // gets caught. (Promise.resolve(syncCall) evaluates synchronously and
+        // would bypass .catch on a sync throw.)
+        Promise.resolve().then(() => window.ProModelerApp.newProject()).catch(err => surfaceError(err, 'New project failed'));
+      }
       closeIfHooked(container);
       return;
     }
     dbg.log(`[File] Starting project with ${picked.length} starter asset(s):`, picked);
     if (window.ProModelerApp) {
-      const result = window.ProModelerApp.newProject({ starterSlugs: picked });
-      // Surface success/failure to the status bar
-      Promise.resolve(result).catch(err => {
-        dbg.error('[File] newProject failed:', err);
-        const statusLeft = document.getElementById('statusLeft');
-        if (statusLeft) statusLeft.textContent = `New project failed: ${err.message || err}`;
-      });
+      // Defer the call into .then() so a synchronous throw inside newProject
+      // also gets caught. Promise.resolve(result) would evaluate result
+      // synchronously before the wrapper, bypassing .catch on a sync throw.
+      Promise.resolve().then(() => window.ProModelerApp.newProject({ starterSlugs: picked })).catch(err => surfaceError(err, 'New project failed'));
     }
     closeIfHooked(container);
   });
@@ -146,21 +154,17 @@ function buildControls(container, state) {
                   // loadProject also gets caught. Promise.resolve(fn()) would
                   // evaluate fn() first and bypass the .catch on a sync throw.
                   // Promise.resolve() then handles async rejection uniformly.
-                  Promise.resolve().then(() => window.ProModelerApp.loadProject(data)).catch((err) => {
-                    dbg.error('[File] loadProject failed:', err);
-                    if (statusLeft) statusLeft.textContent = `Open failed: ${err.message || err}`;
-                  });
+                  Promise.resolve().then(() => window.ProModelerApp.loadProject(data)).catch((err) => surfaceError(err, 'Open failed'));
                 } else if (data.objects) {
                   // Best-effort fallback for older engines. Surface both to log + status bar
                   // so the failure is visible without DevTools open.
                   window.ProModelerApp.objects = [];
                   dbg.warn('[File] Studio lacks loadProject — ingested objects dropped on the floor');
-                  if (statusLeft) statusLeft.textContent = 'Open: studio lacks loadProject; data dropped';
+                  writeStatus('Open: studio lacks loadProject; data dropped');
                 }
               }
             } catch (err) {
-              dbg.error('[File] Failed to parse project:', err);
-              if (statusLeft) statusLeft.textContent = `Open failed: ${err.message || err}`;
+              surfaceError(err, 'Open failed');
             }
           };
           reader.readAsText(file);
@@ -211,11 +215,7 @@ function importFromFile() {
       name: mainFile.name,
     });
     if (importPromise) {
-      importPromise.catch((err) => {
-        dbg.error('[File] Import failed:', err);
-        const statusLeft = document.getElementById('statusLeft');
-        if (statusLeft) statusLeft.textContent = `Import failed: ${err?.message || err}`;
-      });
+      importPromise.catch((err) => surfaceError(err, 'Import failed'));
     }
   };
   inp.click();
