@@ -9,6 +9,8 @@ import * as THREE from 'three';
 import { normalizeImport } from './import-normalize.js';
 import { ModelIO } from './ModelIO.js';
 
+import { dbg } from '../app/dbg.js';
+
 export class ModelEditor {
   constructor(scene, camera, renderer, controls, transformControls) {
     this.scene = scene;
@@ -134,11 +136,11 @@ export class ModelEditor {
         try {
           hook(delta);
         } catch (hookErr) {
-          console.warn('Frame hook error:', hookErr);
+          dbg.warn('Frame hook error:', hookErr);
         }
       }
     } catch (e) {
-      console.warn('ModelEditor.update error:', e);
+      dbg.warn('ModelEditor.update error:', e);
     }
   }
 
@@ -214,7 +216,7 @@ export class ModelEditor {
       selectedObjects: new Set(this.selectedObjects)
     };
     for (const fn of this._selectionListeners) {
-      try { fn(data); } catch (e) { console.warn('Selection listener error:', e); }
+      try { fn(data); } catch (e) { dbg.warn('Selection listener error:', e); }
     }
   }
 

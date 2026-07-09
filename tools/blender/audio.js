@@ -1,3 +1,5 @@
+import { dbg } from '../../app/dbg.js';
+
 let audioContext = null;
 const soundCache = new Map();
 
@@ -8,7 +10,7 @@ function getAudioContext() {
         if (audioContext.state === 'suspended') {
             const resumeContext = () => {
                 audioContext.resume().then(() => {
-                    console.log('AudioContext resumed successfully');
+                    dbg.log('AudioContext resumed successfully');
                     document.removeEventListener('click', resumeContext);
                 });
             };

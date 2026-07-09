@@ -3,6 +3,8 @@
  * Runs requests in parallel across both, returns fastest response.
  * Falls through if both fail.
  */
+import { dbg } from './dbg.js';
+
 export class AIBridge {
   constructor() {
     this._ready = false;
@@ -16,7 +18,7 @@ export class AIBridge {
     if (typeof puter !== 'undefined' && puter.ai) available.push('puter');
     this._models = available;
     this._ready = true;
-    console.log(`[AI Bridge] Ready — platforms: ${available.join(', ') || 'none'}`);
+    dbg.log(`[AI Bridge] Ready — platforms: ${available.join(', ') || 'none'}`);
   }
 
   isReady() { return this._ready; }

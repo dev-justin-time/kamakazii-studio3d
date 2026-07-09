@@ -15,6 +15,8 @@
 
 import { StripeBridge } from './StripeBridge.js';
 
+import { dbg } from '../app/dbg.js';
+
 export class MonetizationEngine {
   constructor(editorState, stripeOptions = {}) {
     this.editor = editorState;
@@ -38,10 +40,10 @@ export class MonetizationEngine {
       successUrl: stripeOptions.successUrl,
       cancelUrl: stripeOptions.cancelUrl,
       onPaymentSuccess: (data) => {
-        console.log('[MonetizationEngine] Stripe payment success:', data);
+        dbg.log('[MonetizationEngine] Stripe payment success:', data);
       },
       onPaymentError: (err) => {
-        console.error('[MonetizationEngine] Stripe payment error:', err);
+        dbg.error('[MonetizationEngine] Stripe payment error:', err);
       }
     });
   }
@@ -224,7 +226,7 @@ export class MonetizationEngine {
       if (result.success && result.session) {
         // Update session record with the real Stripe session ID
         sessionRecord.id = result.session.id || sessionRecord.id;
-        console.log(`[MonetizationEngine] Stripe checkout: ${sessionRecord.id} — $${(total / 100).toFixed(2)} ${currency}`);
+        dbg.log(`[MonetizationEngine] Stripe checkout: ${sessionRecord.id} — $${(total / 100).toFixed(2)} ${currency}`);
       }
 
       return result;
@@ -264,7 +266,7 @@ export class MonetizationEngine {
 
     this.transactions.push(session);
 
-    console.log(`[MonetizationEngine] Simulated checkout: ${session.id} — $${(total / 100).toFixed(2)} ${currency}`);
+    dbg.log(`[MonetizationEngine] Simulated checkout: ${session.id} — $${(total / 100).toFixed(2)} ${currency}`);
     return { success: true, session, live: false };
   }
 

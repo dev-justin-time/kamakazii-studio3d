@@ -1,0 +1,780 @@
+/* ==========================================================================
+   KAMAKAZII STUDIO 3D — Editors
+   Texture paint, node editor, timeline, procedural generation, physics,
+   volumetric effects, cloth, fluid, terrain, shaders, animation controls
+   ========================================================================== */
+
+/* ── Texture Paint Panel ── */
+.texture-paint-panel, #vertexPaintPanel {
+    position: absolute;
+    top: 60px;
+    left: 300px;
+    width: 250px;
+    background: rgba(42, 42, 42, 0.95);
+    border: 1px solid #404040;
+    border-radius: 8px;
+    padding: 16px;
+    display: none;
+}
+.texture-paint-panel.active, #vertexPaintPanel.active { display: block; }
+
+.paint-brush-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #404040;
+    padding-bottom: 16px;
+}
+
+.paint-tool-selector {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.paint-tool {
+    width: 40px;
+    height: 40px;
+    background: #404040;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.paint-tool:hover { background: #555; }
+.paint-tool.active { border-color: #4a9eff; background: #4a9eff; color: white; }
+
+.brush-size-control {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.brush-size-control label { font-size: 12px; color: #ccc; }
+.brush-size-control input[type="range"] { width: 100%; }
+
+.brush-preview {
+    width: 80px;
+    height: 80px;
+    border: 2px solid #555;
+    border-radius: 50%;
+    margin: 0 auto;
+    position: relative;
+    background: radial-gradient(circle, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.1) 70%, transparent 100%);
+}
+
+/* Paint Layers */
+.paint-layers-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.layers-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #ccc;
+    font-size: 12px;
+}
+.layers-header-row i {
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+.layers-header-row i:hover { background: #555; color: white; }
+
+.layers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+    background: #222;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+.paint-layer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 3px;
+    background: #333;
+    font-size: 11px;
+    cursor: pointer;
+}
+.paint-layer-item:hover { background: #404040; }
+.paint-layer-item.active { background: #4a9eff; color: white; }
+
+.layer-vis-toggle {
+    width: 16px;
+    text-align: center;
+    cursor: pointer;
+    opacity: 0.7;
+}
+.layer-vis-toggle:hover { opacity: 1; }
+
+.paint-layer-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Node Editor ── */
+.node-editor-toolbar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: flex;
+    gap: 8px;
+    z-index: 100;
+}
+
+.node-add-button {
+    padding: 8px 12px;
+    background: #4a9eff;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.node-add-button:hover { background: #2080ff; }
+
+.node-connection {
+    position: absolute;
+    pointer-events: none;
+    stroke: #4a9eff;
+    stroke-width: 2;
+    fill: none;
+}
+.node-connection.selected { stroke: #ff6b6b; stroke-width: 3; }
+
+.node-editor-canvas {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #1a1a1a;
+    overflow: hidden;
+}
+
+.node-editor-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image:
+        linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.shader-node {
+    position: absolute;
+    background: #2a2a2a;
+    border: 1px solid #404040;
+    border-radius: 8px;
+    min-width: 180px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.node-header {
+    background: #404040;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid #555;
+    border-radius: 8px 8px 0 0;
+}
+
+.node-inputs, .node-outputs {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+}
+
+.node-socket {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 11px;
+}
+.node-socket.output { justify-content: flex-end; }
+
+.socket {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #666;
+    border: 2px solid #888;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.socket:hover { background: #4a9eff; border-color: #2080ff; }
+.socket.color { background: #ffff44; border-color: #ffcc00; }
+.socket.float { background: #44ff44; border-color: #00cc00; }
+.socket.vector { background: #4444ff; border-color: #0000cc; }
+.socket.shader { background: #ff4444; border-color: #cc0000; }
+
+/* ── Timeline ── */
+.timeline-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #333;
+    border-bottom: 1px solid #404040;
+}
+
+.timeline-btn {
+    width: 32px;
+    height: 32px;
+    background: #404040;
+    border: none;
+    color: #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.timeline-btn:hover { background: #555; }
+
+.frame-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+.frame-input input {
+    width: 80px;
+    background: #404040;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.timeline-editor {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.timeline-tracks {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.track-header {
+    width: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    background: #404040;
+    border-radius: 6px;
+}
+.track-name { font-size: 12px; font-weight: 500; }
+.track-controls { display: flex; gap: 4px; }
+.track-controls i {
+    font-size: 10px;
+    padding: 2px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: background-color 0.2s;
+}
+.track-controls i:hover { background: #555; }
+
+.track-timeline {
+    flex: 1;
+    height: 32px;
+    background: #404040;
+    border-radius: 6px;
+    position: relative;
+}
+
+.keyframe {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: #4a9eff;
+    border-radius: 50%;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.keyframe:hover { transform: translateY(-50%) scale(1.3); }
+
+.timeline-scrubber {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 100%;
+    background: #4a9eff;
+    z-index: 10;
+    pointer-events: none;
+}
+.timeline-scrubber::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -3px;
+    width: 8px;
+    height: 8px;
+    background: #4a9eff;
+    border-radius: 50%;
+}
+
+/* Timeline Layers */
+.timeline-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 16px;
+}
+
+.timeline-layer {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: #404040;
+    border-radius: 4px;
+    position: relative;
+}
+
+.layer-visibility {
+    width: 16px;
+    height: 16px;
+    background: #555;
+    border-radius: 2px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+.layer-visibility.visible { background: #4a9eff; color: white; }
+
+.layer-name { flex: 1; font-size: 12px; color: #e0e0e0; }
+
+.layer-keyframes {
+    flex: 2;
+    height: 20px;
+    background: #333;
+    border-radius: 3px;
+    position: relative;
+    margin-left: 8px;
+}
+
+.layer-keyframe {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: #4a9eff;
+    border-radius: 50%;
+    top: 7px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.layer-keyframe:hover { transform: scale(1.5); }
+.layer-keyframe.selected { background: #ff6b6b; }
+
+/* ── Animation Controls ── */
+.animation-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 16px;
+}
+
+.frame-rate-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+}
+.frame-rate-control label { color: #888; }
+.frame-rate-control input {
+    width: 50px;
+    background: #404040;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+}
+
+/* ── Procedural Generation ── */
+.procedural-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.generation-presets {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.generation-preset {
+    padding: 12px;
+    background: #404040;
+    border: 1px solid #555;
+    border-radius: 6px;
+    cursor: pointer;
+    text-align: center;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+.generation-preset:hover { background: #4a9eff; color: white; border-color: #2080ff; }
+
+.generation-parameters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.parameter-group {
+    background: #333;
+    padding: 12px;
+    border-radius: 6px;
+}
+.parameter-group h5 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #4a9eff;
+    margin-bottom: 8px;
+}
+
+.parameter-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.parameter-slider label { font-size: 11px; min-width: 60px; }
+.parameter-slider input[type="range"] { flex: 1; }
+.parameter-value {
+    font-size: 11px;
+    color: #888;
+    min-width: 40px;
+    text-align: right;
+}
+
+/* ── Physics Simulation ── */
+.physics-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+.physics-controls h4 { font-size: 13px; color: #ff6b6b; margin-bottom: 12px; }
+
+.physics-material-selector {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.physics-material {
+    padding: 6px 12px;
+    background: #555;
+    border: 1px solid #666;
+    border-radius: 16px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.physics-material:hover { background: #666; }
+.physics-material.active { background: #ff6b6b; color: white; border-color: #ff4444; }
+
+.gravity-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.gravity-control label { font-size: 12px; min-width: 60px; }
+.gravity-control input[type="range"] { flex: 1; }
+
+/* ── Volumetric Effects ── */
+.volumetric-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.fog-controls { display: flex; flex-direction: column; gap: 8px; }
+
+.fog-color-picker {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.fog-color-picker input[type="color"] {
+    width: 32px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.fog-density-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.fog-density-control input[type="range"] { flex: 1; }
+
+/* ── Cloth Simulation ── */
+.cloth-parameters {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.wind-controls { display: flex; flex-direction: column; gap: 8px; }
+.wind-direction { display: flex; gap: 8px; }
+.wind-axis { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wind-axis label { font-size: 10px; color: #ccc; }
+.wind-axis input[type="range"] { width: 100%; }
+
+/* ── Fluid Simulation ── */
+.fluid-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.particle-count-control { display: flex; align-items: center; gap: 12px; }
+.viscosity-control { display: flex; align-items: center; gap: 12px; }
+.surface-tension-control { display: flex; align-items: center; gap: 12px; }
+
+/* ── Terrain Generation ── */
+.terrain-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.terrain-size-control { display: flex; align-items: center; gap: 12px; }
+.terrain-resolution-control { display: flex; align-items: center; gap: 12px; }
+.terrain-height-control { display: flex; align-items: center; gap: 12px; }
+
+.terrain-noise-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #555;
+}
+
+/* ── Advanced Lighting ── */
+.lighting-advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 16px;
+}
+
+.light-probe-controls { padding: 12px; background: #333; border-radius: 6px; }
+.lightmap-controls { padding: 12px; background: #333; border-radius: 6px; }
+.ibl-controls { padding: 12px; background: #333; border-radius: 6px; }
+
+.hdri-slot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.hdri-preview {
+    width: 64px;
+    height: 32px;
+    background: #555;
+    border-radius: 4px;
+    border: 2px dashed #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #888;
+}
+
+/* ── Shader Library ── */
+.shader-library {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.shader-preset {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #404040;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.shader-preset:hover { background: #555; }
+
+.shader-name { font-size: 12px; font-weight: 500; }
+
+.shader-apply-btn {
+    padding: 4px 8px;
+    background: #4a9eff;
+    border: none;
+    color: white;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.shader-apply-btn:hover { background: #2080ff; }
+
+/* ── Material Graph ── */
+.material-graph {
+    background: #1a1a1a;
+    border-radius: 6px;
+    min-height: 200px;
+    position: relative;
+    margin-top: 12px;
+    border: 1px solid #404040;
+}
+.material-graph::before {
+    content: 'Material Graph Editor';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 10px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Advanced Material Previews ── */
+.material-preview-advanced {
+    position: relative;
+    background: linear-gradient(135deg, #333, #555);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.material-preview-advanced::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+/* ── Fog Preview ── */
+.fog-preview {
+    width: 100%;
+    height: 60px;
+    background: linear-gradient(to bottom,
+        rgba(64, 64, 64, 0) 0%,
+        rgba(64, 64, 64, 0.2) 30%,
+        rgba(64, 64, 64, 0.6) 70%,
+        rgba(64, 64, 64, 0.8) 100%);
+    border-radius: 4px;
+    margin-top: 8px;
+    position: relative;
+}
+.fog-preview::after {
+    content: 'Fog Preview';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+}
+
+/* ── Morph Targets ── */
+.morph-targets {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    background: #404040;
+    border-radius: 8px;
+    margin-top: 12px;
+}
+
+.morph-target {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: #333;
+    border-radius: 4px;
+}
+.morph-name { flex: 1; font-size: 12px; }
+
+.morph-weight-slider {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.morph-weight-slider input[type="range"] { flex: 1; }
+.morph-weight-value {
+    font-size: 11px;
+    color: #888;
+    min-width: 32px;
+    text-align: right;
+}
+
+/* ── Control groups (shared) ── */
+.control-group {
+    display: flex;
+    gap: 4px;
+    background: #404040;
+    border-radius: 6px;
+    padding: 4px;
+}

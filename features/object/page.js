@@ -2,6 +2,7 @@
  * Object Tools — Add Primitives, Duplicate, Delete, Transform, Frame
  * Wired to Studio API via window.ProModelerApp
  */
+import { dbg } from '../../app/dbg.js';
 import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
@@ -106,7 +107,7 @@ const meta = {
     },
   ],
   onApply: (state, app) => {
-    console.log('[Object] OK — settings applied');
+    dbg.log('[Object] OK — settings applied');
   }
 };
 

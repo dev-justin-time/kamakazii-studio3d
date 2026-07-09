@@ -67,6 +67,7 @@ export class Studio {
     this._snapEnabled = false;
     this._snapSize = 0.5;
     this._flyMode = false;
+    this._flyKeys = {};
     this._lastFrameTime = performance.now();
     this._elapsed = 0; // elapsed time in seconds for VFX systems
     this._frameDeltas = [];
@@ -155,8 +156,9 @@ export class Studio {
     });
     this.scene.add(this.transformControls);
 
-    // Grid
+    // Grid — positioned at the floor level matching the ground plane
     const grid = new THREE.GridHelper(20, 20, 0x444444, 0x444444);
+    grid.position.y = -0.5;
     this.scene.add(grid);
 
     // Ground plane — receives shadows, gives objects a surface to sit on
@@ -197,16 +199,21 @@ export class Studio {
 
     this._updateLightHelpers();
 
-    // Default cube
+    // Default cube — sits on the ground plane with a subtle idle animation
     const geo = new THREE.BoxGeometry(1, 1, 1);
     const mat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.3, metalness: 0.1 });
-    const cube = new THREE.Mesh(geo, mat);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    cube.name = 'Cube';
-    this.scene.add(cube);
-    this.objects.push(cube);
-    this.selectObject(cube);
+    this._defaultCube = new THREE.Mesh(geo, mat);
+    this._defaultCube.castShadow = true;
+    this._defaultCube.receiveShadow = true;
+    this._defaultCube.position.y = 0; // bottom at y=-0.5, center at y=0, sits on ground at y=-0.5
+    this._defaultCube.name = 'Cube';
+    this.scene.add(this._defaultCube);
+    this.objects.push(this._defaultCube);
+    this.selectObject(this._defaultCube);
+
+    // Animation mixer — for playing imported model animations + idle default animation
+    this._mixers = [];
+    this._idleAnimTime = 0;
 
     // Resize handler
     window.addEventListener('resize', () => {
@@ -928,6 +935,25 @@ export class Studio {
       this._updateFlyCamera(dt);
     }
 
+    // Idle animation: gentle bob + rotation for the default cube
+    this._idleAnimTime += dt;
+    if (this._defaultCube && !this.isAnimationPlaying) {
+      this._defaultCube.rotation.y = Math.sin(this._idleAnimTime * 0.3) * 0.15;
+      this._defaultCube.position.y = 0 + Math.sin(this._idleAnimTime * 0.5) * 0.05;
+    }
+
+    // Advance all animation mixers (for imported animated models)
+    for (let i = this._mixers.length - 1; i >= 0; i--) {
+      const mixer = this._mixers[i];
+      if (mixer._root && this.objects.includes(mixer._root)) {
+        mixer.update(dt);
+      } else {
+        // Object was removed — clean up mixer
+        mixer.stopAllAction();
+        this._mixers.splice(i, 1);
+      }
+    }
+
     // Effects system — update per-frame effects (pulsing, bobbing, rotation, etc.)
     this._updateEffects(this._elapsed);
 
@@ -1479,11 +1505,14 @@ export class Studio {
         root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
         root.name = nameHint.replace(/\.[^/.]+$/, '');
         this._detectRiggingAndAnimations(root, gltf);
+        this._alignToGround(root);
         this.scene.add(root);
         this.objects.push(root);
         this.selectObject(root);
         this.frameSelected();
         this.pushUndo();
+        const clips = root.userData.animationClips || [];
+        if (clips.length > 0) this._playAnimationClips(root, clips);
         log(`Imported ${nameHint} (${Object.keys(pkg.files).length} files)`);
         revokeAll();
         resolve(root);
@@ -1509,11 +1538,14 @@ export class Studio {
           root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
           root.name = file.name.replace(/\.[^/.]+$/, '');
           this._detectRiggingAndAnimations(root, gltf);
+          this._alignToGround(root);
           this.scene.add(root);
           this.objects.push(root);
           this.selectObject(root);
           this.frameSelected();
           this.pushUndo();
+          const clips = root.userData.animationClips || [];
+          if (clips.length > 0) this._playAnimationClips(root, clips);
           log(`Imported ${file.name}`);
           resolve(root);
         }, reject);
@@ -1648,12 +1680,58 @@ export class Studio {
     root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
     root.name = fileName.replace(/\.[^/.]+$/, '');
     this._detectRiggingAndAnimations(root, extra || { animations: [] });
+
+    // Align the model so its bottom sits on the ground plane (y = -0.5)
+    this._alignToGround(root);
+
     this.scene.add(root);
     this.objects.push(root);
     this.selectObject(root);
     this.frameSelected();
     this.pushUndo();
+
+    // If the imported model has animation clips, play them immediately
+    const clips = root.userData.animationClips || (extra?.animations) || [];
+    if (clips.length > 0) {
+      this._playAnimationClips(root, clips);
+    }
+
     log(`Imported ${fileName}`);
+  }
+
+  /**
+   * Shift an object so its bottom bounding-box sits on the ground plane at y = -0.5.
+   * This prevents imported models from floating above or sinking below the floor.
+   */
+  _alignToGround(obj) {
+    if (!obj) return;
+    try {
+      const box = new THREE.Box3().setFromObject(obj);
+      if (box.isEmpty()) return;
+      const minY = box.min.y;
+      const offset = -0.5 - minY;  // distance from bottom to ground plane
+      obj.position.y += offset;
+    } catch (_) {
+      // Silently skip alignment for degenerate objects
+    }
+  }
+
+  /**
+   * Create animation mixers and play all animation clips found on an imported model.
+   * Stores mixers in this._mixers so they're updated every frame.
+   */
+  _playAnimationClips(root, clips) {
+    if (!clips || clips.length === 0) return;
+    const mixer = new THREE.AnimationMixer(root);
+    mixer._root = root;
+    for (const clip of clips) {
+      const action = mixer.clipAction(clip);
+      if (action) {
+        action.play();
+      }
+    }
+    this._mixers.push(mixer);
+    log(`▶ Playing ${clips.length} animation clip(s) on imported model`);
   }
 
   // ── Export with baked textures (GLB with embedded textures) ──

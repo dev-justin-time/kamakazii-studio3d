@@ -12,6 +12,7 @@
      speak('Image generated successfully');
    ═══════════════════════════════════════════════════════════════════════════ */
 
+import { dbg } from './dbg.js';
 import puterLib, {
   resolvePuter,
   isPuterAvailable,
@@ -66,7 +67,7 @@ export async function initPuter() {
 
   const p = await resolvePuter();
   if (!p) {
-    console.warn('[puter-client] Puter SDK not available');
+    dbg.warn('[puter-client] Puter SDK not available');
     _puterInitialized = true;
     _puterUser = null;
     return false;
@@ -76,9 +77,9 @@ export async function initPuter() {
   try {
     _puterUser = await auth.getUser();
     if (_puterUser) {
-      console.log('[puter-client] Signed in as', _puterUser.username || _puterUser.name);
+      dbg.log('[puter-client] Signed in as', _puterUser.username || _puterUser.name);
     } else {
-      console.log('[puter-client] Puter SDK ready, user not signed in');
+      dbg.log('[puter-client] Puter SDK ready, user not signed in');
     }
   } catch (_) {
     _puterUser = null;
@@ -123,7 +124,7 @@ export function onAuthChange(cb) {
 export async function generateImage(prompt, options = {}) {
   if (!_puterInitialized) await initPuter();
   if (!isPuterAvailable()) {
-    console.warn('[puter-client] Cannot generate image: Puter SDK unavailable');
+    dbg.warn('[puter-client] Cannot generate image: Puter SDK unavailable');
     return null;
   }
 
@@ -144,7 +145,7 @@ export async function generateImage(prompt, options = {}) {
     if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation failed';
     return null;
   } catch (e) {
-    console.warn('[puter-client] generateImage error:', e);
+    dbg.warn('[puter-client] generateImage error:', e);
     if (!options.silent && statusEl) statusEl.textContent = '⚠️ Image generation error';
     return null;
   }
@@ -209,7 +210,7 @@ export async function speak(text, options = {}) {
         }
       }
     } catch (e) {
-      console.warn('[puter-client] Puter TTS failed, falling back to Web Speech:', e);
+      dbg.warn('[puter-client] Puter TTS failed, falling back to Web Speech:', e);
     }
   }
 
@@ -224,7 +225,7 @@ export async function speak(text, options = {}) {
       if (!options.silent && statusEl) statusEl.textContent = '🔊 Speaking (browser)';
       return true;
     } catch (e) {
-      console.warn('[puter-client] Web Speech TTS failed:', e);
+      dbg.warn('[puter-client] Web Speech TTS failed:', e);
     }
   }
 

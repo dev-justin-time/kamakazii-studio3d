@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { dbg } from '../app/dbg.js';
+
 export class NodeEditorSystem {
     constructor(studio) {
         this.studio = studio;
@@ -39,12 +41,12 @@ export class NodeEditorSystem {
                     if (found) {
                         obs.disconnect();
                         this._nodeEditorObserver = null;
-                        try { this.init(); } catch (e) { console.warn('NodeEditorSystem init retry failed', e); }
+                        try { this.init(); } catch (e) { dbg.warn('NodeEditorSystem init retry failed', e); }
                     }
                 });
                 this._nodeEditorObserver.observe(document.body, { childList: true, subtree: true });
             }
-            console.warn('NodeEditorSystem: node-editor DOM not present, initialization deferred until DOM available.');
+            dbg.warn('NodeEditorSystem: node-editor DOM not present, initialization deferred until DOM available.');
             return;
         }
 
@@ -100,7 +102,7 @@ export class NodeEditorSystem {
             this._scheduleUpdateConnections = () => {
                 clearTimeout(this._updateConnTimer);
                 this._updateConnTimer = setTimeout(() => {
-                    try { this.updateConnections(); } catch (e) { console.warn('updateConnections failed', e); }
+                    try { this.updateConnections(); } catch (e) { dbg.warn('updateConnections failed', e); }
                 }, 60); // small debounce
             };
         }
@@ -109,7 +111,7 @@ export class NodeEditorSystem {
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
 
-        console.log('Node Editor System initialized');
+        dbg.log('Node Editor System initialized');
         // Initial render of connections (debounced to allow DOM settle)
         setTimeout(() => this._scheduleUpdateConnections && this._scheduleUpdateConnections(), 50);
     }
@@ -392,7 +394,7 @@ export class NodeEditorSystem {
                 this.svgContainer.appendChild(path);
             });
         } catch (e) {
-            console.warn('NodeEditorSystem.updateConnections encountered an error:', e);
+            dbg.warn('NodeEditorSystem.updateConnections encountered an error:', e);
         }
     }
 
@@ -475,7 +477,7 @@ export class NodeEditorSystem {
                 const val = this.evaluateNode(roughConn.fromNode, roughConn.fromSocket);
                 if (typeof val === 'number') {
                     safeSetNumeric(mat, 'roughness', Math.max(0, Math.min(1, val)));
-                    console.log('Graph: Set Roughness', val);
+                    dbg.log('Graph: Set Roughness', val);
                 }
             }
 
@@ -485,7 +487,7 @@ export class NodeEditorSystem {
                 const val = this.evaluateNode(metalConn.fromNode, metalConn.fromSocket);
                 if (typeof val === 'number') {
                     safeSetNumeric(mat, 'metalness', Math.max(0, Math.min(1, val)));
-                    console.log('Graph: Set Metalness', val);
+                    dbg.log('Graph: Set Metalness', val);
                 }
             }
 
@@ -498,17 +500,17 @@ export class NodeEditorSystem {
                     try { mat.color.copy(val); } catch (e) { /* ignore */ }
                     // clear texture if present
                     if ('map' in mat) mat.map = null;
-                    console.log('Graph: Set Color', val.getHexString ? val.getHexString() : val);
+                    dbg.log('Graph: Set Color', val.getHexString ? val.getHexString() : val);
                 } else if (val && val.isTexture && 'map' in mat) {
                     try { mat.map = val; } catch (e) { /* ignore */ }
                     if (mat.color && typeof mat.color.setHex === 'function') mat.color.setHex(0xffffff);
-                    console.log('Graph: Set Texture');
+                    dbg.log('Graph: Set Texture');
                 }
             }
 
             if (mat && typeof mat.needsUpdate !== 'undefined') mat.needsUpdate = true;
         } catch (e) {
-            console.warn('applyGraphToMaterial failed safely:', e);
+            dbg.warn('applyGraphToMaterial failed safely:', e);
         }
     }
 }

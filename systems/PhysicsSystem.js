@@ -22,6 +22,8 @@ const GROUP = {
  * - Constraint types: Distance, Hinge, PointToPoint, Lock, Spring
  * - Trigger volumes with enter/exit callbacks
  */
+import { dbg } from '../app/dbg.js';
+
 export class PhysicsSystem {
   constructor(studio) {
     this.studio = studio;
@@ -50,8 +52,8 @@ export class PhysicsSystem {
 
     if (!this.studio || !this.studio.scene) {
       this._inited = false;
-      setTimeout(() => { try { this.init(); } catch(e) { console.warn('PhysicsSystem retry failed', e); } }, 500);
-      console.warn('PhysicsSystem: studio.scene not ready, retrying init shortly.');
+      setTimeout(() => { try { this.init(); } catch(e) { dbg.warn('PhysicsSystem retry failed', e); } }, 500);
+      dbg.warn('PhysicsSystem: studio.scene not ready, retrying init shortly.');
       return;
     }
 
@@ -64,7 +66,7 @@ export class PhysicsSystem {
         this.CANNON = mod && (mod.default ? mod.default : mod);
         if (!this.CANNON) throw new Error('Loaded cannon-es had no exports');
       } catch (err) {
-        console.warn('cannon-es dynamic import failed, using PhysicsPlaceholder shim:', err);
+        dbg.warn('cannon-es dynamic import failed, using PhysicsPlaceholder shim:', err);
         this.CANNON = null;
       }
     }
@@ -77,7 +79,7 @@ export class PhysicsSystem {
     }
 
     this._initWorld();
-    console.log('PhysicsSystem initialized', this.CANNON._isShim ? '(shim)' : '(cannon-es)');
+    dbg.log('PhysicsSystem initialized', this.CANNON._isShim ? '(shim)' : '(cannon-es)');
   }
 
   /* ── Shim (API-complete no-op fallback) ── */
@@ -221,7 +223,7 @@ export class PhysicsSystem {
         this.world.addEventListener('endContact', (e) => this._onEndContact(e));
       }
     } catch(e) {
-      console.warn('PhysicsSystem._initWorld error:', e);
+      dbg.warn('PhysicsSystem._initWorld error:', e);
     }
   }
 
@@ -231,14 +233,14 @@ export class PhysicsSystem {
     const was = !!this.enabled;
     this.enabled = !!enabled;
     if (this.enabled && !this._inited) {
-      this.init().catch(err => console.warn('PhysicsSystem.init on enable failed', err));
+      this.init().catch(err => dbg.warn('PhysicsSystem.init on enable failed', err));
     }
     if (this.enabled && !was) {
       if (this.meshes.length === 0 && this.cloths.length === 0) {
-        try { this.syncScene(); } catch(e) { console.warn('PhysicsSystem.syncScene failed on enable', e); }
+        try { this.syncScene(); } catch(e) { dbg.warn('PhysicsSystem.syncScene failed on enable', e); }
       }
     }
-    console.log(`Physics simulation ${this.enabled ? 'enabled' : 'disabled'}`);
+    dbg.log(`Physics simulation ${this.enabled ? 'enabled' : 'disabled'}`);
   }
 
   /* ── Scene Sync ── */
@@ -325,7 +327,7 @@ export class PhysicsSystem {
       this._bodyMeshMap.set(body, mesh);
       return body;
     } catch(e) {
-      console.warn('PhysicsSystem.addBody failed:', e);
+      dbg.warn('PhysicsSystem.addBody failed:', e);
       return null;
     }
   }
@@ -374,7 +376,7 @@ export class PhysicsSystem {
       this._bodyMeshMap.set(body, mesh);
       return body;
     } catch(e) {
-      console.warn('addTrimesh failed:', e);
+      dbg.warn('addTrimesh failed:', e);
       return null;
     }
   }
@@ -396,7 +398,7 @@ export class PhysicsSystem {
       this.world.addBody(body);
       return body;
     } catch(e) {
-      console.warn('addHeightfield failed:', e);
+      dbg.warn('addHeightfield failed:', e);
       return null;
     }
   }
@@ -445,7 +447,7 @@ export class PhysicsSystem {
         this.constraints.push({ constraint, bodyA, bodyB, type });
       }
     } catch(e) {
-      console.warn(`createConstraint(${type}) failed:`, e);
+      dbg.warn(`createConstraint(${type}) failed:`, e);
     }
     return constraint;
   }
@@ -549,7 +551,7 @@ export class PhysicsSystem {
   createCloth(width, height, segments, pos) {
     if (!pos) pos = { x: 0, y: 5, z: 0 };
     if (!this.world || !this.CANNON) {
-      console.warn('createCloth skipped: physics backend not available');
+      dbg.warn('createCloth skipped: physics backend not available');
       return null;
     }
 
@@ -626,10 +628,10 @@ export class PhysicsSystem {
       (this.studio.objects || []).push(mesh);
 
       this.cloths.push({ mesh, particles, springs, cols, rows });
-      console.log(`Cloth created: ${width}x${height}, ${segments} segs, ${springs.length} springs`);
+      dbg.log(`Cloth created: ${width}x${height}, ${segments} segs, ${springs.length} springs`);
       return mesh;
     } catch(e) {
-      console.error('createCloth failed:', e);
+      dbg.error('createCloth failed:', e);
       return null;
     }
   }
@@ -702,7 +704,7 @@ export class PhysicsSystem {
     }
 
     this.softBodies.push({ mesh, particles, springs, dim });
-    console.log(`Soft body: ${particles.length} particles, ${springs.length} springs`);
+    dbg.log(`Soft body: ${particles.length} particles, ${springs.length} springs`);
     return { mesh, particles, springs };
   }
 
@@ -710,7 +712,7 @@ export class PhysicsSystem {
 
   createFluid(position, particleCount = 100) {
     if (!this.world || !this.CANNON) {
-      console.warn('createFluid skipped: physics backend not available');
+      dbg.warn('createFluid skipped: physics backend not available');
       return;
     }
 
@@ -748,7 +750,7 @@ export class PhysicsSystem {
         this.studio.scene.add(mesh);
       }
     }
-    console.log(`Fluid: ${particleCount} particles`);
+    dbg.log(`Fluid: ${particleCount} particles`);
   }
 
   /* ── Trigger Volumes ── */
@@ -776,7 +778,7 @@ export class PhysicsSystem {
       this._bodyMeshMap.set(body, mesh);
       return trigger;
     } catch(e) {
-      console.warn('addTrigger failed:', e);
+      dbg.warn('addTrigger failed:', e);
       return null;
     }
   }
@@ -896,7 +898,7 @@ export class PhysicsSystem {
 
       if (this._debugEnabled) this._updateDebug();
     } catch(e) {
-      console.warn('Physics update failed:', e);
+      dbg.warn('Physics update failed:', e);
     }
   }
 
@@ -993,7 +995,7 @@ export class PhysicsSystem {
     this.triggers = [];
     this._bodyMeshMap.clear();
     this._fluidBodies = [];
-    console.log('PhysicsSystem disposed');
+    dbg.log('PhysicsSystem disposed');
   }
 }
 

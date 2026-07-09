@@ -14,6 +14,7 @@
  * It communicates with the backend via MarketplaceAPI.
  */
 
+import { dbg } from '../app/dbg.js';
 import { ModelPreviewRenderer } from './ModelPreviewRenderer.js';
 
 export class MarketplaceUI {
@@ -931,7 +932,7 @@ export class MarketplaceUI {
       });
       this.previewRenderer.init();
     } catch (err) {
-      console.warn('[MarketplaceUI] Failed to initialize 3D preview:', err);
+      dbg.warn('[MarketplaceUI] Failed to initialize 3D preview:', err);
       // Show fallback icon
       container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;opacity:0.3;"><i class="fas fa-cube" style="font-size:80px;"></i></div>';
     }

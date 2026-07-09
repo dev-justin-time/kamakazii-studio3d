@@ -5,6 +5,7 @@
  * grab/move interactions, and ray-based selection for WebXR sessions.
  */
 
+import { dbg } from '../../app/dbg.js';
 import * as THREE from 'three';
 
 /**
@@ -23,7 +24,7 @@ export function isVRAvailable() {
  */
 export async function enterVR(renderer, opts = {}) {
   if (!navigator.xr) {
-    console.warn('[VR] WebXR not supported');
+    dbg.warn('[VR] WebXR not supported');
     return null;
   }
   try {
@@ -34,7 +35,7 @@ export async function enterVR(renderer, opts = {}) {
     renderer.xr.setSession(session);
     return session;
   } catch (e) {
-    console.warn('[VR] Failed to start session:', e);
+    dbg.warn('[VR] Failed to start session:', e);
     return null;
   }
 }

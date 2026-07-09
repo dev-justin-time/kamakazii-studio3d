@@ -1,0 +1,241 @@
+/* ==========================================================================
+   KAMAKAZII STUDIO 3D — Utilities
+   Dark theme, glow/glass effects, loading states, animations, keyframes,
+   mobile responsiveness, joystick, loading overlay, progress indicator
+   ========================================================================== */
+
+/* ── Dark Theme Enhancements ── */
+.dark-accent {
+    background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 50%, #333 100%);
+}
+
+.glow-effect {
+    box-shadow: 0 0 20px rgba(74, 158, 255, 0.3);
+}
+
+.glass-effect {
+    background: rgba(42, 42, 42, 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ── Loading States ── */
+.loading {
+    position: relative;
+    overflow: hidden;
+}
+.loading::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(74, 158, 255, 0.2), transparent);
+    animation: loading 1.5s infinite;
+}
+
+.processing {
+    position: relative;
+    overflow: hidden;
+}
+.processing::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(74, 158, 255, 0.3), transparent);
+    animation: processing 2s infinite;
+}
+
+.processing-animation {
+    animation: pulseGlow 2s infinite ease-in-out;
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #666;
+    border-radius: 50%;
+    border-top-color: #4a9eff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+/* ── Progress Indicator ── */
+.progress-indicator {
+    width: 100px;
+    height: 4px;
+    background: #404040;
+    border-radius: 2px;
+    position: relative;
+    overflow: hidden;
+}
+.progress-indicator::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 30%;
+    background: #4a9eff;
+    border-radius: 2px;
+    animation: progress 2s infinite;
+}
+
+/* ── Loading Overlay ── */
+#loadingOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(26, 26, 26, 0.85);
+    z-index: 10000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+#loadingOverlay.active {
+    display: flex;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #404040;
+    border-top: 4px solid #4a9eff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+.loading-text {
+    font-size: 16px;
+    color: #e0e0e0;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* ── Joystick ── */
+#joystick {
+    position: absolute;
+    bottom: 40px;
+    left: 40px;
+    width: 120px;
+    height: 120px;
+    pointer-events: all;
+    opacity: 0.8;
+    z-index: 1000;
+    display: none;
+}
+
+/* ── Animations / Keyframes ── */
+@keyframes loading {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+@keyframes processing {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+@keyframes slideInRight {
+    from { transform: translateX(100%); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 5px rgba(74, 158, 255, 0.3); }
+    50%      { box-shadow: 0 0 20px rgba(74, 158, 255, 0.8); }
+}
+@keyframes progress {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Mobile Responsiveness ── */
+@media (hover: none) and (pointer: coarse) {
+    #joystick { display: block; }
+    .viewport-navigation, .gizmo-container { display: none; }
+}
+
+@media (max-width: 1600px) {
+    .texture-paint-panel { width: 200px; }
+    .performance-monitor { min-width: 140px; font-size: 9px; }
+    .generation-presets { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1400px) {
+    .sidebar { width: 220px; }
+    .preset-grid { grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); }
+}
+
+@media (max-width: 1200px) {
+    .sidebar { width: 240px; }
+    .asset-grid { grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); }
+}
+
+@media (max-width: 1000px) {
+    .main-toolbar .tool-group { gap: 1px; }
+    .tool-item { width: 28px; height: 28px; }
+    .viewport-stats { gap: 8px; }
+}
+
+@media (max-width: 900px) {
+    .menu-bar { padding: 0 8px; }
+    .logo span { display: none; }
+    .main-toolbar { padding: 0 8px; gap: 8px; }
+
+    .mobile-toggle-btn { display: flex; }
+
+    .sidebar {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        height: 100%;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+        width: 280px;
+    }
+    .left-sidebar { left: 0; transform: translateX(-100%); }
+    .right-sidebar { right: 0; transform: translateX(100%); }
+    .sidebar.open { transform: translateX(0); }
+
+    .view-controls { display: none; }
+    .separator { display: none; }
+    .tool-group { flex: 1; justify-content: center; }
+    .tool-item { width: 40px; height: 40px; font-size: 16px; }
+    .menu-item { padding: 8px; }
+
+    .sidebar-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 15;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+        backdrop-filter: blur(2px);
+    }
+    .sidebar-overlay.active { display: block; opacity: 1; }
+}

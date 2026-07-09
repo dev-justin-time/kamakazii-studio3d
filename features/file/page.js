@@ -2,6 +2,7 @@
  * File Operations — New, Open, Save, Import, Export
  * Wired to Studio API via window.ProModelerApp
  */
+import { dbg } from '../../app/dbg.js';
 import { renderControls } from '../_shared/renderControls.js';
 
 const meta = {
@@ -27,7 +28,7 @@ const meta = {
               const data = JSON.parse(ev.target.result);
               window.ProModelerApp?.loadProject(data);
             } catch (err) {
-              console.error('[File] Failed to parse project:', err);
+              dbg.error('[File] Failed to parse project:', err);
             }
           };
           reader.readAsText(file);
@@ -73,7 +74,7 @@ const meta = {
   ],
   onApply: (state, app) => {
     // No special apply logic — buttons fire actions immediately
-    console.log('[File] OK — project state applied');
+    dbg.log('[File] OK — project state applied');
   }
 };
 

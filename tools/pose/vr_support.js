@@ -4,6 +4,8 @@
   Purpose: Minimal helpers to detect WebXR availability and expose a toggle hook.
 */
 
+import { dbg } from '../../app/dbg.js';
+
 export function isWebXRAvailable() {
   return !!(navigator.xr && navigator.xr.isSessionSupported);
 }
@@ -29,7 +31,7 @@ export function attachVrToggleButton(parentEl = document.body) {
       // This module does not start a session; it only exposes the hook.
       alert('VR support detected — implement session start in your app.');
     } catch (e) {
-      console.error('VR check failed', e);
+      dbg.error('VR check failed', e);
     }
   });
   parentEl.appendChild(btn);

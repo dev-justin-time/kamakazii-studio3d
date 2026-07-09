@@ -95,6 +95,8 @@ const DEMO_ASSETS = [
   { id: 'v_tree_01',  name: 'Voxel Pine',       type: 'voxel',  icon: 'fa-tree',               generator: 'gen-voxel-tree',  cost: 'Premium' },
 ];
 
+import { dbg } from '../app/dbg.js';
+
 export class CloudSystem {
     constructor(studio) {
         this.studio = studio;
@@ -144,7 +146,7 @@ export class CloudSystem {
 
         if (category) {
             const filtered = catalog.filter(a => a.type === category);
-            console.log(`[CloudSystem] Filtered catalog by type="${category}": ${filtered.length}/${catalog.length} assets`);
+            dbg.log(`[CloudSystem] Filtered catalog by type="${category}": ${filtered.length}/${catalog.length} assets`);
             return filtered;
         }
 
@@ -152,21 +154,21 @@ export class CloudSystem {
     }
 
     async _fetchAssetsImpl() {
-        console.log('[CloudSystem] Fetching asset catalog...');
+        dbg.log('[CloudSystem] Fetching asset catalog...');
 
         // 1. Try Puter KV
         if (isPuterAvailable()) {
             try {
                 const raw = await kv.get(KV_CATALOG_KEY);
                 if (raw && Array.isArray(raw) && raw.length > 0) {
-                    console.log('[CloudSystem] Loaded catalog from Puter KV');
+                    dbg.log('[CloudSystem] Loaded catalog from Puter KV');
                     this._connected = true;
                     return raw.slice();
                 }
                 // KV responded but returned empty — still counts as connected
                 this._connected = true;
             } catch (e) {
-                console.warn('[CloudSystem] Puter KV read failed, falling back:', e);
+                dbg.warn('[CloudSystem] Puter KV read failed, falling back:', e);
                 this._connected = false;
             }
         } else {
@@ -179,14 +181,14 @@ export class CloudSystem {
             if (localRaw) {
                 const parsed = JSON.parse(localRaw);
                 if (Array.isArray(parsed) && parsed.length > 0) {
-                    console.log('[CloudSystem] Loaded catalog from localStorage');
+                    dbg.log('[CloudSystem] Loaded catalog from localStorage');
                     return parsed;
                 }
             }
         } catch (_) { /* localStorage unavailable or corrupt */ }
 
         // 3. Seed demo assets on first run so the UI is never empty
-        console.log('[CloudSystem] No catalog found — using built-in demos');
+        dbg.log('[CloudSystem] No catalog found — using built-in demos');
         await this.seedDemoAssets();
         return DEMO_ASSETS.slice();
     }
@@ -199,7 +201,7 @@ export class CloudSystem {
         if (this._seeded) return;
         this._seeded = true;
 
-        console.log('[CloudSystem] Seeding demo asset catalog...');
+        dbg.log('[CloudSystem] Seeding demo asset catalog...');
 
         // Write to localStorage unconditionally (fast, always works)
         try {
@@ -212,9 +214,9 @@ export class CloudSystem {
             try {
                 await kv.set(KV_CATALOG_KEY, DEMO_ASSETS);
                 await kv.set(KV_SEEDED_KEY, true);
-                console.log('[CloudSystem] Demo catalog synced to Puter KV');
+                dbg.log('[CloudSystem] Demo catalog synced to Puter KV');
             } catch (e) {
-                console.warn('[CloudSystem] Puter KV seed write failed:', e);
+                dbg.warn('[CloudSystem] Puter KV seed write failed:', e);
             }
         }
     }
@@ -234,7 +236,7 @@ export class CloudSystem {
         const asset = catalog.find(a => a.id === assetId);
         if (!asset) throw new Error(`Asset "${assetId}" not found`);
 
-        console.log(`[CloudSystem] Importing ${asset.name} (${asset.type})...`);
+        dbg.log(`[CloudSystem] Importing ${asset.name} (${asset.type})...`);
 
         // 1. Try to load from Puter FS: prefer native 3D file formats (glTF, OBJ, STL, PLY, FBX)
         //    over JSON parametric data. This is the "real 3D asset" pipeline.
@@ -246,7 +248,7 @@ export class CloudSystem {
                 const fsPath = `CloudAssets/${asset.id}.${fmt.ext}`;
                 try {
                     const blob = await fs.read(fsPath); // throws if file doesn't exist
-                    console.log(`[CloudSystem] Found ${fmt.ext} asset (${(blob.size / 1024).toFixed(1)} KB) at ${fsPath}`);
+                    dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(blob.size / 1024).toFixed(1)} KB) at ${fsPath}`);
                     const imported = await this._importModelAsset(asset, fsPath, fmt.type, blob);
                     if (imported) return asset;
                 } catch (_) {
@@ -284,15 +286,15 @@ export class CloudSystem {
      */
     async syncCatalogToCloud() {
         if (!isPuterAvailable()) {
-            console.warn('[CloudSystem] Cannot sync: Puter unavailable');
+            dbg.warn('[CloudSystem] Cannot sync: Puter unavailable');
             return false;
         }
         try {
             await kv.set(KV_CATALOG_KEY, DEMO_ASSETS);
-            console.log('[CloudSystem] Catalog synced to Puter KV');
+            dbg.log('[CloudSystem] Catalog synced to Puter KV');
             return true;
         } catch (e) {
-            console.warn('[CloudSystem] Catalog sync failed:', e);
+            dbg.warn('[CloudSystem] Catalog sync failed:', e);
             return false;
         }
     }
@@ -310,7 +312,7 @@ export class CloudSystem {
     async _importModelAsset(asset, fsPath, format, blob) {
         if (!this.studio || !this.studio.scene) return false;
 
-        console.log(`[CloudSystem] Loading ${format} asset from ${fsPath}...`);
+        dbg.log(`[CloudSystem] Loading ${format} asset from ${fsPath}...`);
 
         // Show loading state
         if (this.studio.ui?.log) {
@@ -319,14 +321,14 @@ export class CloudSystem {
 
         try {
             if (!blob || blob.size === 0) {
-                console.warn('[CloudSystem] Empty file:', fsPath);
+                dbg.warn('[CloudSystem] Empty file:', fsPath);
                 return false;
             }
 
             // ── Resolve the appropriate loader ──
             const loader = await _getLoader(format);
             if (!loader) {
-                console.warn('[CloudSystem] No loader for format:', format);
+                dbg.warn('[CloudSystem] No loader for format:', format);
                 return false;
             }
 
@@ -382,7 +384,7 @@ export class CloudSystem {
             }
 
             if (!object) {
-                console.warn('[CloudSystem] Loader returned no object for', fsPath);
+                dbg.warn('[CloudSystem] Loader returned no object for', fsPath);
                 return false;
             }
 
@@ -416,7 +418,7 @@ export class CloudSystem {
             if (diag > 20) {
                 const scale = 10 / diag;
                 object.scale.setScalar(scale);
-                console.log(`[CloudSystem] Scaled imported asset by ${scale.toFixed(3)} (was ${diag.toFixed(1)} units)`);
+                dbg.log(`[CloudSystem] Scaled imported asset by ${scale.toFixed(3)} (was ${diag.toFixed(1)} units)`);
             } else if (diag < 0.1) {
                 const scale = 2 / diag;
                 object.scale.setScalar(scale);
@@ -431,11 +433,11 @@ export class CloudSystem {
 
             const fmtLabel = format.toUpperCase();
             this.studio.ui.log(`Imported "${object.name}" (${fmtLabel}, ${triCount.toLocaleString()} tris)`, 'success');
-            console.log(`[CloudSystem] Imported ${format} asset: ${object.name} (${triCount} tris)`);
+            dbg.log(`[CloudSystem] Imported ${format} asset: ${object.name} (${triCount} tris)`);
             return true;
 
         } catch (e) {
-            console.warn(`[CloudSystem] Failed to import ${format} asset ${fsPath}:`, e);
+            dbg.warn(`[CloudSystem] Failed to import ${format} asset ${fsPath}:`, e);
             if (this.studio.ui?.log) {
                 this.studio.ui.log(`Failed to load ${asset.name}: ${e.message}`, 'error');
             }
@@ -459,12 +461,12 @@ export class CloudSystem {
      */
     async _importPuterAsset(asset, assetData) {
         if (!assetData) {
-            console.warn('[CloudSystem] No asset data for', asset.name, '— falling back to procedural generation');
+            dbg.warn('[CloudSystem] No asset data for', asset.name, '— falling back to procedural generation');
             this._fallbackProcedural(asset);
             return;
         }
 
-        console.log('[CloudSystem] Importing Puter FS asset:', asset.name);
+        dbg.log('[CloudSystem] Importing Puter FS asset:', asset.name);
 
         // ── Determine the format and collect items ──
         const items = [];
@@ -481,7 +483,7 @@ export class CloudSystem {
             items.push(assetData);
         }
 
-        // ── Reconstruct mesh items ──
+        // ── Reconstruct mesh items (textures are embedded in material data URIs) ──
         if (items.length > 0) {
             const meshes = [];
             for (const item of items) {
@@ -505,7 +507,7 @@ export class CloudSystem {
         }
 
         // ── Fallback: procedural generation ──
-        console.warn('[CloudSystem] No reconstructable geometry in asset data for', asset.name, '— using procedural fallback');
+        dbg.warn('[CloudSystem] No reconstructable geometry in asset data for', asset.name, '— using procedural fallback');
         this._fallbackProcedural(asset);
     }
 
@@ -522,16 +524,25 @@ export class CloudSystem {
 
     /**
      * Reconstruct a single THREE.Mesh from a bundle item's serialized data.
-     * Handles parametric geometries (Box, Sphere, Cylinder, Plane, Cone, Torus)
-     * and falls back to a small placeholder box.
+     * Supports:
+     *   - Full buffer geometry (format: 'buffer' with attributes.position.array, etc.)
+     *   - Parametric geometries (Box, Sphere, Cylinder, Plane, Cone, Torus)
+     *   - Falls back to a small placeholder box
+     *
+     * Also loads embedded textures from the assetData.textures map.
      */
-    _reconstructMesh(item) {
+    _reconstructMesh(item, textures) {
         if (!item || item.type === 'group') return null;
 
         // ── Geometry ──
         let geometry = null;
         if (item.geometry) {
-            geometry = this._parametricGeometry(item.geometry.parameters || item.geometry);
+            // 1a. Try full buffer reconstruction first (format === 'buffer')
+            geometry = this._bufferGeometry(item.geometry);
+            // 1b. Fall back to parametric reconstruction
+            if (!geometry) {
+                geometry = this._parametricGeometry(item.geometry.parameters || item.geometry);
+            }
         }
         if (!geometry) {
             geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -541,7 +552,7 @@ export class CloudSystem {
         const matData = Array.isArray(item.material) ? item.material[0] : item.material;
         let material;
         if (matData) {
-            material = new THREE.MeshStandardMaterial({
+            const matOptions = {
                 color: matData.color !== undefined ? matData.color : 0x60a5fa,
                 roughness: matData.roughness ?? 0.3,
                 metalness: matData.metalness ?? 0.1,
@@ -550,7 +561,24 @@ export class CloudSystem {
                 wireframe: !!matData.wireframe,
                 emissive: matData.emissive ?? 0x000000,
                 emissiveIntensity: matData.emissiveIntensity ?? 0,
-            });
+            };
+
+            // Load texture maps from embedded data URIs (serialized inline by AssetBundler)
+            const textureSlots = ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                                  'aoMap', 'emissiveMap', 'displacementMap', 'alphaMap',
+                                  'bumpMap', 'specularMap', 'envMap'];
+            for (const slot of textureSlots) {
+                const texData = matData[slot];
+                // texData is now an inline descriptor with { dataUri, uuid, width, height }
+                if (texData && texData.dataUri) {
+                    const tex = this._loadTextureFromDataUri(texData.dataUri);
+                    if (tex) {
+                        matOptions[slot] = tex;
+                    }
+                }
+            }
+
+            material = new THREE.MeshStandardMaterial(matOptions);
         } else {
             material = new THREE.MeshStandardMaterial({
                 color: 0x60a5fa,
@@ -569,6 +597,99 @@ export class CloudSystem {
         if (item.scale) mesh.scale.fromArray(Array.isArray(item.scale) ? item.scale : [1, 1, 1]);
 
         return mesh;
+    }
+
+    /**
+     * Reconstruct a BufferGeometry from serialized buffer arrays.
+     * Reads the `format: 'buffer'` geometry data and creates
+     * BufferAttribute objects from the flat arrays.
+     *
+     * Expected format:
+     *   {
+     *     format: 'buffer',
+     *     attributes: {
+     *       position: { array: number[], itemSize: 3, count: N },
+     *       normal:   { array: number[], itemSize: 3, count: N },
+     *       uv:       { array: number[], itemSize: 2, count: N }
+     *     },
+     *     index: { array: number[], count: N }
+     *   }
+     */
+    _bufferGeometry(geoData) {
+        if (!geoData || geoData.format !== 'buffer') return null;
+        if (!geoData.attributes?.position?.array) return null;
+
+        try {
+            const geometry = new THREE.BufferGeometry();
+
+            // Restore each attribute from its flat array
+            const attrNames = ['position', 'normal', 'uv', 'uv2', 'color', 'tangent'];
+            for (const name of attrNames) {
+                const attrData = geoData.attributes[name];
+                if (attrData && attrData.array && attrData.array.length > 0) {
+                    const typedArray = new Float32Array(attrData.array);
+                    const attr = new THREE.BufferAttribute(
+                        typedArray,
+                        attrData.itemSize || 3,
+                        !!attrData.normalized
+                    );
+                    geometry.setAttribute(name, attr);
+                }
+            }
+
+            // Restore index buffer
+            if (geoData.index && geoData.index.array && geoData.index.array.length > 0) {
+                // Use Uint32Array for indices (handles > 65535 vertices)
+                const idxArray = new Uint32Array(geoData.index.array);
+                geometry.setIndex(new THREE.BufferAttribute(idxArray, 1));
+            }
+
+            // Restore morph targets
+            if (geoData.morphAttributes) {
+                const morphNames = ['position', 'normal', 'uv'];
+                for (const name of morphNames) {
+                    const targets = geoData.morphAttributes[name];
+                    if (targets && targets.length > 0) {
+                        const morphAttrs = targets.map(t => {
+                            const typedArray = new Float32Array(t.array);
+                            return new THREE.BufferAttribute(typedArray, t.itemSize || 3);
+                        });
+                        geometry.morphAttributes[name] = morphAttrs;
+                    }
+                }
+            }
+
+            // Only compute normals if they weren't in the serialized data
+            // to avoid overwriting carefully authored hard-edge normals
+            if (!geoData.attributes?.normal) {
+                geometry.computeVertexNormals();
+            }
+            return geometry;
+        } catch (e) {
+            dbg.warn('[CloudSystem] _bufferGeometry failed:', e.message);
+            return null;
+        }
+    }
+
+    /**
+     * Load a THREE.Texture from a data URI (base64).
+     * Used to reconstruct textures embedded in the asset bundle's `textures` map.
+     */
+    /**
+     * Load a THREE.Texture from a data URI (base64).
+     * Uses THREE.TextureLoader which handles async image decode correctly
+     * and sets needsUpdate after the image loads.
+     */
+    _loadTextureFromDataUri(dataUri) {
+        if (!dataUri || typeof dataUri !== 'string') return null;
+        try {
+            const loader = new THREE.TextureLoader();
+            const texture = loader.load(dataUri);
+            return texture;
+        } catch (e) {
+            dbg.warn('[CloudSystem] Texture load failed:', e.message);
+            return null;
+        }
     }
 
     /**
@@ -623,7 +744,7 @@ export class CloudSystem {
                 );
             }
         } catch (e) {
-            console.warn('[CloudSystem] _parametricGeometry failed:', e);
+            dbg.warn('[CloudSystem] _parametricGeometry failed:', e);
         }
         return null;
     }
@@ -660,7 +781,7 @@ export class CloudSystem {
         }
 
         if (group.children.length === 0) {
-            console.warn('[CloudSystem] No valid voxels in asset data for', asset.name);
+            dbg.warn('[CloudSystem] No valid voxels in asset data for', asset.name);
             this._fallbackProcedural(asset);
             return;
         }

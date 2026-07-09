@@ -53,7 +53,7 @@ async function _ensureLoaders() {
   _PLYExporter       = get(10)?.PLYExporter    || null;
   // Log any failures for debugging
   results.forEach((r, i) => {
-    if (r.status === 'rejected') console.warn(`[ModelIO] Loader ${i} failed to load:`, r.reason);
+    if (r.status === 'rejected') dbg.warn(`[ModelIO] Loader ${i} failed to load:`, r.reason);
   });
 }
 
@@ -88,6 +88,8 @@ function _isGltfLike(ext) {
 }
 
 // ── ModelIO class ──
+
+import { dbg } from '../app/dbg.js';
 
 export class ModelIO {
   /**
@@ -192,7 +194,7 @@ export class ModelIO {
         });
         results.push(wrapper);
       } catch (err) {
-        console.warn(`[ModelIO] Batch import skipped ${list[i].name}: ${err.message}`);
+        dbg.warn(`[ModelIO] Batch import skipped ${list[i].name}: ${err.message}`);
       }
     }
     if (results.length > 0) {
@@ -757,7 +759,7 @@ export class ModelIO {
     if (ctx.ui && typeof ctx.ui.log === 'function') {
       ctx.ui.log(msg, type);
     } else {
-      console.log(`[ModelIO] ${msg}`);
+      dbg.log(`[ModelIO] ${msg}`);
     }
   }
 

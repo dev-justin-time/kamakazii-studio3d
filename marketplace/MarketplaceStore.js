@@ -14,6 +14,8 @@
  * - Favorites / wishlist
  */
 
+import { dbg } from '../app/dbg.js';
+
 export class MarketplaceStore {
   constructor(editorState, monetizationEngine) {
     this.editor = editorState;
@@ -113,7 +115,7 @@ export class MarketplaceStore {
     this.newReleases.unshift(listing.id);
     if (this.newReleases.length > 50) this.newReleases.pop();
 
-    console.log(`[MarketplaceStore] Listing created: "${listing.title}" by ${listing.creator}`);
+    dbg.log(`[MarketplaceStore] Listing created: "${listing.title}" by ${listing.creator}`);
     return listing;
   }
 

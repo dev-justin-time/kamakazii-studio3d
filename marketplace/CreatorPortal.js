@@ -11,6 +11,8 @@
  * - Customer support (Q&A, dispute resolution)
  */
 
+import { dbg } from '../app/dbg.js';
+
 export class CreatorPortal {
   constructor(editorState, marketplaceStore, monetizationEngine) {
     this.editor = editorState;
@@ -52,7 +54,7 @@ export class CreatorPortal {
   updateProfile(updates) {
     Object.assign(this.profile, updates);
     this._cloudDirty = true;
-    console.log(`[CreatorPortal] Profile updated: ${this.profile.displayName}`);
+    dbg.log(`[CreatorPortal] Profile updated: ${this.profile.displayName}`);
     this._scheduleCloudSync();
     return this.profile;
   }
@@ -129,7 +131,8 @@ export class CreatorPortal {
   }
 
   /**
-   * Publish an approved draft to the marketplace
+   * Publish an approved draft to the marketplace.
+   * Also uploads the asset bundle to Puter FS cloud storage via AssetBundler.
    */
   async publish(draftId) {
     const draft = this.drafts.get(draftId);
@@ -141,6 +144,32 @@ export class CreatorPortal {
     draft.publishedAt = Date.now();
     draft.reviewedAt = Date.now();
     draft.reviewNotes = 'Auto-approved (simulated review)';
+
+    // ── Upload to Puter FS cloud storage if AssetBundler is available ──
+    let cloudResult = null;
+    if (draft.bundleData && draft.bundleData.id) {
+      const bundler = this.editor?.assetBundler;
+      if (bundler) {
+        try {
+          // Textures are already embedded in the bundle items' material data
+          // by AssetBundler._serializeMaterial() — no separate extraction needed.
+
+          // Upload to cloud
+          cloudResult = await bundler.publishToCloud(draft.bundleData.id);
+          draft.cloudPath = cloudResult.path;
+          draft.cloudSize = cloudResult.size;
+
+          this._addNotification('Cloud Upload', `Bundle uploaded to cloud (${(cloudResult.size / 1024).toFixed(1)} KB)`, 'success');
+        } catch (err) {
+          dbg.warn('[CreatorPortal] Cloud upload failed (non-fatal):', err.message);
+          this._addNotification('Cloud Upload Warning', `Bundle upload failed: ${err.message}. Listing published locally.`, 'warning');
+        }
+      } else {
+        // Log a visible warning so it's debuggable rather than silently skipped
+        console.warn('[CreatorPortal] AssetBundler not available on editor — cloud upload skipped. ' +
+                     'Ensure editor.assetBundler is wired (e.g. via SystemManager.initBundler())');
+      }
+    }
 
     // Create marketplace listing
     if (this.store) {
@@ -159,13 +188,14 @@ export class CreatorPortal {
         previewImages: draft.previewImages,
         creator: this.profile.displayName,
         creatorId: this.profile.id,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        cloudPath: cloudResult?.path || null
       });
     }
 
     this.profile.totalProducts++;
-    this._addNotification('Published', `"${draft.title}" is now live on the marketplace!`, 'success');
-    return { success: true, listing: draft };
+    this._addNotification('Published', `"${draft.title}" is now live on the marketplace!${cloudResult ? ' (cloud backup active)' : ''}`, 'success');
+    return { success: true, listing: draft, cloud: cloudResult };
   }
 
   /**
@@ -309,7 +339,7 @@ export class CreatorPortal {
   async initCloudSync() {
     if (typeof window !== 'undefined' && window.puter && window.puter.kv) {
       this._cloudSyncEnabled = true;
-      console.log('[CreatorPortal] Cloud sync enabled via Puter.js KV');
+      dbg.log('[CreatorPortal] Cloud sync enabled via Puter.js KV');
       // Pull latest from cloud on init
       await this._syncFromCloud();
     } else {
@@ -342,9 +372,9 @@ export class CreatorPortal {
       try {
         await window.puter.kv.set('kamakazii_creator_profile', json);
         this._cloudDirty = false;
-        console.log('[CreatorPortal] Profile synced to cloud');
+        dbg.log('[CreatorPortal] Profile synced to cloud');
       } catch (err) {
-        console.warn('[CreatorPortal] Cloud sync failed:', err.message);
+        dbg.warn('[CreatorPortal] Cloud sync failed:', err.message);
       }
     } else {
       this._cloudDirty = false;
@@ -370,10 +400,10 @@ export class CreatorPortal {
             if (!this.drafts.has(id)) this.drafts.set(id, draft);
           }
         }
-        console.log('[CreatorPortal] Synced profile from cloud');
+        dbg.log('[CreatorPortal] Synced profile from cloud');
       }
     } catch (err) {
-      console.warn('[CreatorPortal] Cloud pull failed:', err.message);
+      dbg.warn('[CreatorPortal] Cloud pull failed:', err.message);
     }
   }
 

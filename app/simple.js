@@ -1,3 +1,4 @@
+import { dbg } from './dbg.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
@@ -129,7 +130,7 @@ scene.add(transformControls);
    try {
      await systemManager.initAll();
    } catch (e) {
-     console.warn('SystemManager.initAll error', e);
+     dbg.warn('SystemManager.initAll error', e);
    }
  })();
 
@@ -172,7 +173,7 @@ window.addEventListener('resize', () => {
      editor.importExport.importModel((sourceType === 'file-multi' && files && typeof files === 'object') ? { url, files, name } : (url || { url, name }))
          .then(() => uiManager.showStatus(`Imported ${name || 'model'}.`))
          .catch((err) => {
-             console.error('Import error from popup:', err);
+             dbg.error('Import error from popup:', err);
              uiManager.showStatus(`Error importing model: ${err.message}`, 5000);
          });
  });

@@ -36,17 +36,15 @@ body {
 
 .menu-item:hover { background: rgba(255,255,255,0.03); }
 
-/* Dropdowns: allow internal scrolling and visible custom scrollbar.
-   Max height ensures the menu fits on small screens and supports sliders and many controls. */
-/* Dropdown container: cap overall height and enable smooth scrolling.
-   Keep layout flexible but ensure internal sections have stable heights on small screens. */
+/* Dropdowns: allow internal scrolling with custom scrollbar.
+   Max height ensures the menu fits on small screens. */
 .dropdown {
   position: absolute;
   top: 44px;
   left: 0;
   min-width: 260px;
   max-width: 420px;
-  max-height: 60vh; /* hard ceiling so dropdown never exceeds viewport height */
+  max-height: 60vh;
   background: #2d2d2d;
   border: 1px solid #444;
   padding: 8px;
@@ -55,76 +53,47 @@ body {
   gap: 8px;
   border-radius: 6px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-
-  /* Scroll handling */
-  overflow: hidden; /* hide outer overflow; inner sections scroll separately */
+  overflow: hidden;
 }
 
-/* Make dropdown content scrollable in separate sections so long menus remain usable on mobile
-   without the dropdown itself growing taller than the viewport. */
+.menu-item.open > .dropdown { display: flex; }
+
+/* Scrollable sections inside dropdowns */
 .dropdown-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 8px 6px 6px 6px;
+  padding: 8px 6px 6px;
   border-bottom: 1px solid rgba(255,255,255,0.03);
-
-  /* Allow each section to scroll if its content exceeds this stable height.
-     Using max-height ensures the entire dropdown fits on one screen while letting
-     users scroll within long sections (e.g. many buttons or long forms). */
   max-height: 40vh;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* If dropdown contains many sections, let the inner sections shrink before the container overflows */
-.dropdown > .dropdown-section:first-child {
-  flex-shrink: 0;
-}
+.dropdown > .dropdown-section:first-child { flex-shrink: 0; }
+.dropdown-section:last-child { border-bottom: none; padding-bottom: 0; }
 
-/* Keep the overall dropdown accessible: if content still exceeds total height, allow outer scroll fallback */
-@media (max-height: 640px) {
-  .dropdown {
-    max-height: 54vh;
-  }
-  .dropdown-section {
-    max-height: 36vh;
-  }
-}
-
-/* preserve previous scrollbar styling for inner scrollable areas */
-.dropdown-section::-webkit-scrollbar {
-  width: 10px;
-}
-.dropdown-section::-webkit-scrollbar-track {
-  background: transparent;
-}
-.dropdown-section::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.08);
-  border-radius: 6px;
-  border: 2px solid rgba(45,45,45,0.9);
-}
-
-/* when open, keep flex layout */
-.menu-item.open > .dropdown { display: flex; }
-
-/* Slight right padding so content doesn't touch scrollbar */
+/* Scrollbar for dropdown sections */
+.dropdown-section::-webkit-scrollbar,
 .dropdown::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
+.dropdown-section::-webkit-scrollbar-track,
 .dropdown::-webkit-scrollbar-track {
   background: transparent;
 }
+.dropdown-section::-webkit-scrollbar-thumb,
 .dropdown::-webkit-scrollbar-thumb {
   background: rgba(255,255,255,0.08);
   border-radius: 6px;
   border: 2px solid rgba(45,45,45,0.9);
 }
 
-.dropdown-section { display:flex; flex-direction:column; gap:6px; padding:8px 6px 6px 6px; border-bottom: 1px solid rgba(255,255,255,0.03); }
-
-.dropdown-section:last-child { border-bottom: none; padding-bottom: 0; }
+@media (max-height: 640px) {
+  .dropdown { max-height: 54vh; }
+  .dropdown-section { max-height: 36vh; }
+}
 
 .dropdown-title {
   font-size: 12px;
@@ -132,7 +101,6 @@ body {
   margin-bottom: 2px;
 }
 
-/* Buttons inside dropdown keep original look but ensure touch target size */
 .dropdown-btn {
   background: #3a3a3a;
   color: #eee;
@@ -142,12 +110,12 @@ body {
   text-align: left;
   cursor: pointer;
   font-size: 13px;
-  min-height: 44px; /* touch-friendly */
+  min-height: 44px;
 }
 
 .dropdown-btn:hover { background: #505050; }
 
-/* Range (sliders) styling — subtle, consistent within dropdowns */
+/* Range sliders */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -157,7 +125,6 @@ input[type="range"] {
   margin: 6px 0;
 }
 
-/* Track */
 input[type="range"]::-webkit-slider-runnable-track {
   height: 8px;
   background: linear-gradient(90deg,#444,#3a3a3a);
@@ -170,8 +137,6 @@ input[type="range"]::-moz-range-track {
   border-radius: 6px;
   border: 1px solid rgba(0,0,0,0.4);
 }
-
-/* Thumb */
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -192,20 +157,19 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 1px 2px rgba(0,0,0,0.4);
 }
 
-/* adjust app-container to sit below menu */
-#app-container { margin-top: 44px; height: calc(100vh - 44px); }
-
+/* Main app layout */
 #app-container {
     display: flex;
     width: 100vw;
     height: 100vh;
+    margin-top: 0;
 }
 
 #renderCanvas {
     flex-grow: 1;
     display: block;
     background-color: #222;
-    cursor: grab; /* Indicate interactivity and potential for dragging/panning */
+    cursor: grab;
 }
 
 #ui-panel {
@@ -263,14 +227,8 @@ button {
     transition: background-color 0.2s ease;
 }
 
-button:hover:not(:disabled) {
-    background-color: #0056b3;
-}
-
-button:disabled {
-    background-color: #6c757d;
-    cursor: not-allowed;
-}
+button:hover:not(:disabled) { background-color: #0056b3; }
+button:disabled { background-color: #6c757d; cursor: not-allowed; }
 
 input[type="color"] {
     width: calc(100% - 10px);
@@ -282,33 +240,19 @@ input[type="color"] {
     cursor: pointer;
 }
 
-input[type="color"]::-webkit-color-swatch-wrapper {
-    padding: 0;
-}
-
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 input[type="color"]::-webkit-color-swatch {
     border: 1px solid #777;
     border-radius: 3px;
 }
 
-#exportBtn {
-    background-color: #28a745;
-}
-
-#exportBtn:hover {
-    background-color: #218838;
-}
-
-#deleteBtn {
-    background-color: #dc3545;
-}
-
-#deleteBtn:hover:not(:disabled) {
-    background-color: #c82333;
-}
+#exportBtn { background-color: #28a745; }
+#exportBtn:hover { background-color: #218838; }
+#deleteBtn { background-color: #dc3545; }
+#deleteBtn:hover:not(:disabled) { background-color: #c82333; }
 
 #status-message {
-    margin-top: auto; /* Pushes the status message to the bottom */
+    margin-top: auto;
     padding: 10px;
     background-color: #333;
     border-radius: 5px;
@@ -316,72 +260,3 @@ input[type="color"]::-webkit-color-swatch {
     font-size: 0.9em;
     min-height: 20px;
 }
-
-/* ============================================================================
- * KAMIKAZZI — Accessibility additions
- * Appended to every app CSS (aero_comand / studio3D / vecter_omega3d) so the
- * rules apply automatically wherever the parent CSS loads, without requiring
- * HTML-side <link> edits.
- * ========================================================================== */
-
-/* ── 1. Universal focus-visible — neon-cyan outline on keyboard nav only ──
- * :focus-visible respects input modality (keyboard -> ring, mouse -> none)
- * :focus:not(:focus-visible) clears styling for mouse clicks so outline
- * doesn't blink on every click within the cyberpunk HUD. */
-:focus-visible {
-  outline: 2px solid #4a9eff;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 0 8px rgba(74,158,255,.6);
-  border-radius: 2px;
-}
-
-:focus:not(:focus-visible) {
-  outline: none;
-  box-shadow: none;
-}
-
-/* ── 2. prefers-reduced-motion: kill all neon pulses / spinners ─────────
- * Caps the global --motion-scale multiplier at 0 so any @keyframes
- * `animation-duration: var(--motion-scale)` rule evaluates to 0ms when the
- * user has requested reduced motion. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --motion-scale: 0;
-  }
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ── 3. The single "no-neon-pulse mode" CSS variable ──────────────────────
- * Default: 1 (full neon). When prefers-reduced-motion kicks in, the media
- * query above sets it to 0 — anything that reads var(--motion-scale) inside
- * a transition or animation simply freezes. Designers can extend this by
- * redefining other motion tokens in the same media query. */
-:root {
-  --motion-scale: 1;
-}
-
-/* ── 4. Contrast tokens — bumped for HUD readability ──────────────────────
- * Pulled from WCAG AA contrast spot-check (see ACCESSIBILITY.md):
- *   --ink-strong : #f5f5f5  (~AA-Large 4.5:1 satisfied vs every dark bg)
- *   --ink         : #cfcfcf  (~AA-body 7.0:1 vs #1a1a1a)
- *   --ink-soft    : #a8aab0  (replaces #888 / #aaa / #999 commonly used)
- *   --ink-special : #ff9c5b  (warm-accent, ~AA on #050505)
- * Components that previously used #666 / #888 / #aaa muted greys should
- * prefer var(--ink-soft) going forward. */
-:root {
-  --ink-strong: #f5f5f5;
-  --ink:        #cfcfcf;
-  --ink-soft:   #a8aab0;
-  --ink-special:#ff9c5b;
-}
-
-/* wcag-AA micro-fix for low-contrast utility classes that lots of HUD
- * code reused under known names. */
-.muted-aa   { color: var(--ink-soft); }
-.dimmer-aa  { color: var(--ink); }
-.bright-aa  { color: var(--ink-strong); }

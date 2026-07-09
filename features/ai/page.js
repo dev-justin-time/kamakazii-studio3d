@@ -2,6 +2,7 @@
  * AI Tools — Custom prompts, response display, templates
  * Extended with Puter AI image generation (txt2img) and TTS (text-to-speech).
  */
+import { dbg } from '../../app/dbg.js';
 import { renderControls } from '../_shared/renderControls.js';
 
 // ── Image preview state ────────────────────────────────────────────────────
@@ -245,7 +246,7 @@ const meta = {
             _addMessage('Image generation failed — Puter AI may not be available.', 'error');
           }
         } catch (e) {
-          console.warn('[AI Page] Image gen error:', e);
+          dbg.warn('[AI Page] Image gen error:', e);
           if (status) {
             status.textContent = '⚠️ Error: ' + e.message;
             status.style.color = '#ffb4ab';
@@ -310,7 +311,7 @@ const meta = {
             _addMessage('TTS unavailable — no speech engine found.', 'error');
           }
         } catch (e) {
-          console.warn('[AI Page] TTS error:', e);
+          dbg.warn('[AI Page] TTS error:', e);
           _addMessage(`TTS error: ${e.message}`, 'error');
         }
         if (statusEl) statusEl.textContent = 'Ready';

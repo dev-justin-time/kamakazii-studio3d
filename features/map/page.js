@@ -9,12 +9,13 @@
  *   • puter.kv      — cloud sync when Puter SDK is loaded (cross-device)
  *   • JSON export   — download as .kmap.json file
  */
+import { dbg } from '../../app/dbg.js';
 import { renderControls } from '../_shared/renderControls.js';
 import { saveMap, loadMap, listMaps, deleteMap, exportMap } from '../../tools/map-maker/mapStorage.js';
 
 function _status(msg) {
   try { window.__popupStatus?.(msg); } catch { /* noop */ }
-  console.log('[Map]', msg);
+  dbg.log('[Map]', msg);
 }
 
 function _showLibraryPopup(lib) {

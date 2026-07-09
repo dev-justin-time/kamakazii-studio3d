@@ -4,6 +4,8 @@ import * as THREE from 'three';
  * ObjectsManager - centralizes creation and basic management of scene objects.
  * Exported as a named export so other modules can import { ObjectsManager }.
  */
+import { dbg } from '../app/dbg.js';
+
 export class ObjectsManager {
   constructor(editor, scene) {
     this.editor = editor;
@@ -52,7 +54,7 @@ export class ObjectsManager {
       }
 
       default:
-        console.warn('ObjectsManager: unknown type', type);
+        dbg.warn('ObjectsManager: unknown type', type);
         return null;
     }
 

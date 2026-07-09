@@ -8,6 +8,7 @@
  * Supports: button, toggle, slider, number, color, select, text, label, textarea
  */
 
+import { dbg } from '../../app/dbg.js';
 import { actionMap } from './actionMap.js';
 
 /**
@@ -43,7 +44,7 @@ export function renderControls(container, controlsList) {
           e.stopPropagation();
           const fn = actionMap[ctrl.onClick];
           if (fn) fn();
-          else console.warn('No action:', ctrl.onClick);
+          else dbg.warn('No action:', ctrl.onClick);
         });
         row.appendChild(btn);
         break;

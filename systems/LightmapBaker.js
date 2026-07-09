@@ -155,6 +155,8 @@ function _generatePlanarUV2(geometry) {
 /* ═══════════════════════════════════════════════════════════════════════════
    LightmapBaker
    ═══════════════════════════════════════════════════════════════════════════ */
+import { dbg } from '../app/dbg.js';
+
 export class LightmapBaker {
   constructor(renderer) {
     if (!renderer) throw new Error('LightmapBaker requires a WebGLRenderer');
@@ -205,7 +207,7 @@ export class LightmapBaker {
     });
 
     if (meshes.length === 0) {
-      console.warn('[LightmapBaker] No bakeable meshes found');
+      dbg.warn('[LightmapBaker] No bakeable meshes found');
       return [];
     }
 
@@ -264,7 +266,7 @@ export class LightmapBaker {
       rt.dispose();
     }
 
-    console.log(`[LightmapBaker] Baked ${results.length} mesh${results.length === 1 ? '' : 'es'}`);
+    dbg.log(`[LightmapBaker] Baked ${results.length} mesh${results.length === 1 ? '' : 'es'}`);
     return results;
   }
 

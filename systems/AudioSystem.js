@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { dbg } from '../app/dbg.js';
+
 export class AudioSystem {
     constructor(studio) {
         this.studio = studio;
@@ -20,7 +22,7 @@ export class AudioSystem {
         // Ensure environment is ready (some browsers require user gesture or context availability)
         if (typeof window === 'undefined') {
             this._inited = false;
-            setTimeout(() => { try { this.init(); } catch(e){ console.warn('AudioSystem retry failed', e); } }, 500);
+            setTimeout(() => { try { this.init(); } catch(e){ dbg.warn('AudioSystem retry failed', e); } }, 500);
             return;
         }
 
@@ -34,12 +36,12 @@ export class AudioSystem {
             this.gainNode.connect(this.context.destination);
 
             this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-            console.log('AudioSystem initialized');
+            dbg.log('AudioSystem initialized');
         } catch (e) {
-            console.error('AudioSystem init failed:', e);
+            dbg.error('AudioSystem init failed:', e);
             this._inited = false;
             // retry politely later in case of transient user-gesture blocking
-            setTimeout(() => { try { this.init(); } catch(err){ console.warn('AudioSystem retry failed', err); } }, 1500);
+            setTimeout(() => { try { this.init(); } catch(err){ dbg.warn('AudioSystem retry failed', err); } }, 1500);
         }
     }
 
@@ -58,7 +60,7 @@ export class AudioSystem {
                 this.playBuffer(audioBuffer);
             }
         } catch (e) {
-            console.error('Audio load error', e);
+            dbg.error('Audio load error', e);
         }
     }
 

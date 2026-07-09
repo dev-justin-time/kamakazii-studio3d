@@ -1,3 +1,4 @@
+import { dbg } from '../../app/dbg.js';
 import { playSound } from './audio-manager.js'; // Import playSound
 
 let _websim;
@@ -335,7 +336,7 @@ async function sendMessage() {
         addMessageToChatHistory(aiResponse, 'ai');
         conversationHistory.push({ role: "assistant", content: aiResponse });
     } catch (error) {
-        console.error("Error communicating with AI:", error);
+        dbg.error("Error communicating with AI:", error);
         const thinkingMessage = document.getElementById('ai-thinking-placeholder');
         if (thinkingMessage) {
              thinkingMessage.remove();

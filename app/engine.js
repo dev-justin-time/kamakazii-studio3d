@@ -23,7 +23,7 @@ import { SculptSystem } from '../systems/SculptSystem.js';
 import { TexturePaintSystem } from '../systems/TexturePaintSystem.js';
 import { VertexPaintSystem } from '../systems/VertexPaintSystem.js';
 import { NodeEditorSystem } from '../systems/NodeEditorSystem.js';
-import { UIManager } from './UIManager.js';
+import { UIManager } from '../editor/UIManager.js';
 import { InputManager } from '../systems/InputManager.js';
 import { AudioSystem } from '../systems/AudioSystem.js';
 import { CloudSystem } from '../systems/CloudSystem.js';
@@ -640,7 +640,7 @@ class ProModelerStudio {
                             self.ui.log(`Lightmap baked for ${results.length} mesh${results.length !== 1 ? 'es' : ''}`, 'success');
                         }
                     } catch (e) {
-                        console.error('[Engine] Lightmap bake failed:', e);
+                        dbg.error('[Engine] Lightmap bake failed:', e);
                         self.ui.log(`Lightmap bake failed: ${e.message}`, 'error');
                     }
                 })();

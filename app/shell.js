@@ -102,8 +102,10 @@ export class StudioShell {
 
     // ── Popup Overlay ──
     this._popupOverlay = document.createElement('div');
+    this._popupOverlay.id = 'popupOverlay';
     this._popupOverlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:1000;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;';
     this._popupContent = document.createElement('div');
+    this._popupContent.id = 'popupContent';
     this._popupContent.style.cssText = 'background:#1e1e2e;border-radius:8px;border:1px solid #444;min-width:320px;max-width:480px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
     this._popupOverlay.appendChild(this._popupContent);
     this._popupOverlay.addEventListener('click', (e) => { if (e.target === this._popupOverlay) this._closePopup(); });

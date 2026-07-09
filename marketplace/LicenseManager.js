@@ -17,6 +17,8 @@
  * - License key generation & validation
  */
 
+import { dbg } from '../app/dbg.js';
+
 export class LicenseManager {
   constructor(editorState) {
     this.editor = editorState;
@@ -179,7 +181,7 @@ export class LicenseManager {
     this.entitlements.set(assetId, entitlement);
     this.licenses.set(entitlement.licenseKey, entitlement);
 
-    console.log(`[LicenseManager] Granted "${licenseType}" entitlement for asset "${assetId}"`);
+    dbg.log(`[LicenseManager] Granted "${licenseType}" entitlement for asset "${assetId}"`);
     return entitlement;
   }
 
@@ -192,7 +194,7 @@ export class LicenseManager {
       this.licenses.delete(entitlement.licenseKey);
     }
     this.entitlements.delete(assetId);
-    console.log(`[LicenseManager] Revoked entitlement for "${assetId}"`);
+    dbg.log(`[LicenseManager] Revoked entitlement for "${assetId}"`);
   }
 
   /**

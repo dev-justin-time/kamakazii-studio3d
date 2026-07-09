@@ -11,6 +11,8 @@
 
 import * as THREE from 'three';
 
+import { dbg } from '../app/dbg.js';
+
 export class AssetBundler {
   constructor(editorState) {
     this.editor = editorState;
@@ -84,7 +86,7 @@ export class AssetBundler {
     this.bundles.set(bundleId, bundle);
     this.workspace = bundle.items;
 
-    console.log(`[AssetBundler] Created bundle "${bundle.title}" with ${bundle.fileCount} items (${(bundle.totalSize / 1024).toFixed(1)} KB estimated)`);
+    dbg.log(`[AssetBundler] Created bundle "${bundle.title}" with ${bundle.fileCount} items (${(bundle.totalSize / 1024).toFixed(1)} KB estimated)`);
     return bundle;
   }
 
@@ -215,11 +217,74 @@ export class AssetBundler {
       estimatedBytes: this._estimateGeometryBytes(geometry)
     };
 
+    // For non-parametric geometries (imported models, sculptures, etc.)
+    // store the full buffer arrays so they can be faithfully reconstructed.
+    // Parametric geometries (with `parameters`) are reconstructable from
+    // those parameters alone and don't need the raw buffer — but we still
+    // include them here for simplicity.
+    if (geometry.attributes?.position) {
+      data.format = 'buffer';
+      data.attributes = {};
+
+      const attrNames = ['position', 'normal', 'uv', 'uv2', 'color', 'tangent'];
+      for (const name of attrNames) {
+        const attr = geometry.attributes[name];
+        if (attr) {
+          data.attributes[name] = {
+            array: Array.from(attr.array),
+            itemSize: attr.itemSize,
+            count: attr.count,
+            normalized: !!attr.normalized,
+          };
+        }
+      }
+
+      // Serialize index buffer
+      if (geometry.index) {
+        data.index = {
+          array: Array.from(geometry.index.array),
+          count: geometry.index.count,
+        };
+      }
+
+      // Morph target attributes
+      if (geometry.morphAttributes) {
+        data.morphAttributes = {};
+        const morphNames = ['position', 'normal', 'uv'];
+        for (const name of morphNames) {
+          const targets = geometry.morphAttributes[name];
+          if (targets && targets.length > 0) {
+            data.morphAttributes[name] = targets.map((attr, i) => ({
+              array: Array.from(attr.array),
+              itemSize: attr.itemSize,
+              count: attr.count,
+              name: geometry.morphTargets?.[i]?.name || '',
+            }));
+          }
+        }
+      }
+
+      // Update estimated bytes to reflect actual buffer sizes
+      data.estimatedBytes = this._estimateGeometryBytes(geometry);
+    }
+
     return data;
   }
 
   _serializeMaterial(material) {
     if (!material) return null;
+
+    // Helper: serialize a single texture map to an embeddable descriptor
+    const _serializeTexMap = (tex) => {
+      if (!tex || !tex.image) return null;
+      const dataUri = this._textureToDataUri(tex.image);
+      return {
+        uuid: tex.uuid,
+        dataUri,  // base64 PNG embedded directly — no path resolution needed
+        width: tex.image.naturalWidth || tex.image.width,
+        height: tex.image.naturalHeight || tex.image.height,
+      };
+    };
 
     const data = {
       type: material.type || 'MeshStandardMaterial',
@@ -234,10 +299,17 @@ export class AssetBundler {
       side: material.side ?? 2, // THREE.FrontSide
       emissive: material.emissive?.getHex?.() || 0x000000,
       emissiveIntensity: material.emissiveIntensity ?? 0,
-      map: material.map ? { width: material.map.image?.width, height: material.map.image?.height, format: 'image' } : null,
-      normalMap: material.normalMap ? { format: 'image' } : null,
-      roughnessMap: material.roughnessMap ? { format: 'image' } : null,
-      metalnessMap: material.metalnessMap ? { format: 'image' } : null,
+      map: _serializeTexMap(material.map),
+      normalMap: _serializeTexMap(material.normalMap),
+      roughnessMap: _serializeTexMap(material.roughnessMap),
+      metalnessMap: _serializeTexMap(material.metalnessMap),
+      aoMap: _serializeTexMap(material.aoMap),
+      emissiveMap: _serializeTexMap(material.emissiveMap),
+      displacementMap: _serializeTexMap(material.displacementMap),
+      alphaMap: _serializeTexMap(material.alphaMap),
+      bumpMap: _serializeTexMap(material.bumpMap),
+      specularMap: _serializeTexMap(material.specularMap),
+      envMap: _serializeTexMap(material.envMap),
 
       // Physical material props
       clearcoat: material.clearcoat ?? 0,
@@ -343,7 +415,7 @@ export class AssetBundler {
       renderTarget.dispose();
       return canvas.toDataURL('image/webp', 0.8);
     } catch (err) {
-      console.warn('[AssetBundler] Thumbnail generation failed:', err);
+      dbg.warn('[AssetBundler] Thumbnail generation failed:', err);
       return null;
     }
   }
@@ -368,8 +440,114 @@ export class AssetBundler {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-    console.log(`[AssetBundler] Exported "${filename}" (${(blob.size / 1024).toFixed(1)} KB)`);
-    return { filename, size: blob.size };
+    dbg.log(`[AssetBundler] Exported "${filename}" (${(blob.size / 1024).toFixed(1)} KB)`);
+    return { filename, size: blob.size, bundle, blob };
+  }
+
+  /**
+   * Publish a bundle to Puter FS cloud storage.
+   * Uploads the bundle JSON (with embedded texture data URIs) to
+   * `CloudAssets/{creatorId}/{assetId}/asset.k3dasset`.
+   *
+   * Texture data URIs are already embedded in each item's material data
+   * by `_serializeMaterial()` — no separate textures map is needed.
+   *
+   * @param {string} bundleId — The bundle to upload.
+   * @returns {Promise<{path: string, size: number}>}
+   */
+  async publishToCloud(bundleId) {
+    const bundle = this.bundles.get(bundleId);
+    if (!bundle) throw new Error(`Bundle "${bundleId}" not found`);
+
+    // Bundle's items already contain embedded texture data URIs from
+    // _serializeMaterial() — no separate textures map required.
+    const publishBundle = { ...bundle, format: 'k3dasset' };
+    const json = JSON.stringify(publishBundle, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+
+    const creatorId = bundle.creatorId || 'anonymous';
+    const assetId = bundle.id;
+    const fsPath = `CloudAssets/${creatorId}/${assetId}/asset.k3dasset`;
+
+    // Check Puter FS availability
+    const { isPuterAvailable, fs } = await import('../app/puter-client.js');
+    if (!isPuterAvailable()) {
+      throw new Error('Puter FS not available — cannot upload to cloud');
+    }
+
+    // Ensure directory exists (mkdir is safe to call even if exists)
+    try {
+      await fs.mkdir(`CloudAssets/${creatorId}`);
+    } catch (_) { /* may already exist */ }
+    try {
+      await fs.mkdir(`CloudAssets/${creatorId}/${assetId}`);
+    } catch (_) { /* may already exist */ }
+
+    // Write the bundle file
+    try {
+      await fs.write(fsPath, blob);
+      bundle.published = true;
+      bundle.publishDate = Date.now();
+      bundle.cloudPath = fsPath;
+
+      dbg.log(`[AssetBundler] Published bundle to cloud: ${fsPath} (${(blob.size / 1024).toFixed(1)} KB)`);
+      return { path: fsPath, size: blob.size };
+    } catch (err) {
+      dbg.warn(`[AssetBundler] Cloud publish failed: ${err.message}`);
+      throw new Error(`Failed to upload to Puter FS: ${err.message}`);
+    }
+  }
+
+  /**
+   * Textures are now embedded directly in material serialization via
+   * `_serializeMaterial()` — each texture map's data URI is stored inline.
+   * This method is retained as a convenience alias that scans scene objects
+   * and logs a count for status feedback.
+   *
+   * @param {Object3D[]} objects — Scene objects to scan for textures.
+   * @returns {Promise<number>} Count of unique textures found.
+   */
+  async countTextures(objects) {
+    const seen = new Set();
+    const traverse = (obj) => {
+      if (!obj) return;
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const mat of mats) {
+          if (!mat) continue;
+          const slots = ['map', 'normalMap', 'roughnessMap', 'metalnessMap',
+                         'aoMap', 'emissiveMap', 'displacementMap', 'alphaMap',
+                         'bumpMap', 'specularMap', 'envMap'];
+          for (const slot of slots) {
+            const tex = mat[slot];
+            if (tex && tex.image && !seen.has(tex.uuid)) {
+              seen.add(tex.uuid);
+            }
+          }
+        }
+      }
+      if (obj.children) obj.children.forEach(traverse);
+    };
+    objects.forEach(traverse);
+    dbg.log(`[AssetBundler] Found ${seen.size} unique texture(s) in scene (embedded in material serialization)`);
+    return seen.size;
+  }
+
+  /**
+   * Convert a TexImageSource (HTMLImageElement, HTMLCanvasElement, etc.)
+   * to a base64 data URI (PNG format).
+   */
+  _textureToDataUri(image) {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth || image.width || 256;
+      canvas.height = image.naturalHeight || image.height || 256;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      return canvas.toDataURL('image/png');
+    } catch (_) {
+      return null;
+    }
   }
 
   /**
@@ -387,7 +565,7 @@ export class AssetBundler {
           }
           data.importedAt = Date.now();
           this.bundles.set(data.id, data);
-          console.log(`[AssetBundler] Imported bundle "${data.title}" (${data.items?.length || 0} items)`);
+          dbg.log(`[AssetBundler] Imported bundle "${data.title}" (${data.items?.length || 0} items)`);
           resolve(data);
         } catch (err) {
           reject(new Error(`Bundle parse error: ${err.message}`));

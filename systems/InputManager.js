@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 
+import { dbg } from '../app/dbg.js';
+
 export class InputManager {
     constructor(studio) {
         this.studio = studio;
@@ -23,10 +25,10 @@ export class InputManager {
 
         // Defensive: ensure studio.renderer.domElement exists before attaching DOM listeners.
         if (!this.studio || !this.studio.renderer || !this.studio.renderer.domElement) {
-            console.warn('InputManager.init: renderer.domElement not ready, retrying shortly.');
+            dbg.warn('InputManager.init: renderer.domElement not ready, retrying shortly.');
             this._inited = false;
             setTimeout(() => {
-                try { this.init(); } catch (e) { console.warn('InputManager retry failed', e); }
+                try { this.init(); } catch (e) { dbg.warn('InputManager retry failed', e); }
             }, 250);
             return;
         }
@@ -36,7 +38,7 @@ export class InputManager {
         this.setupMouse();
         this.setupTouch();
         this.setupDragDrop();
-        console.log('InputManager initialized');
+        dbg.log('InputManager initialized');
     }
 
     setupKeyboard() {
@@ -210,7 +212,7 @@ export class InputManager {
                         this.joyVelocity.set(0, 0, 0);
                     });
                 } else {
-                    console.warn('nipplejs not loaded');
+                    dbg.warn('nipplejs not loaded');
                 }
             }
         }
@@ -241,7 +243,7 @@ export class InputManager {
                     await this.studio.importExport.importModel(file);
                     this.studio.ui && this.studio.ui.showStatus && this.studio.ui.showStatus(`Imported ${file.name}`, 3000);
                 } catch (err) {
-                    console.error('Drag-drop import failed', err);
+                    dbg.error('Drag-drop import failed', err);
                     this.studio.ui && this.studio.ui.showStatus && this.studio.ui.showStatus(`Import failed: ${err.message || 'unknown'}`, 5000);
                 } finally {
                     this.studio.ui && this.studio.ui.hideLoading && this.studio.ui.hideLoading();
@@ -259,11 +261,11 @@ export class InputManager {
                 try {
                     const blobUrl = URL.createObjectURL(file);
                     const promptMsg = `Dropped file available at temporary URL (will be revoked shortly). Open Import Window and use this URL if supported: ${blobUrl}`;
-                    console.warn(promptMsg);
+                    dbg.warn(promptMsg);
                     alert(promptMsg);
                     setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
                 } catch (err) {
-                    console.warn('Fallback import handling failed', err);
+                    dbg.warn('Fallback import handling failed', err);
                     alert('No import handler available. Please use the Import window from the File menu.');
                 }
             }

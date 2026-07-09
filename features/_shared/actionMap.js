@@ -7,6 +7,7 @@
  * engine integration where available and status feedback for all actions.
  */
 
+import { dbg } from '../../app/dbg.js';
 import * as THREE from 'three';
 
 function _getApp() { return window.ProModelerApp; }
@@ -16,31 +17,7 @@ function _getEngine() { return _getApp()?.engine || _getApp(); }
 export function status(msg) {
   const el = document.getElementById('status-left');
   if (el) el.textContent = msg;
-  console.log('[Feature]', msg);
-}
-
-/** Read a <select> value by data-key from the active feature panel */
-function _readSelect(key, fallback) {
-  const el = document.querySelector(`select[data-key="${key}"]`);
-  return el?.value || fallback;
-}
-
-/** Read a <input type=range> value by data-key */
-function _readSlider(key, fallback) {
-  const el = document.querySelector(`input[data-key="${key}"]`);
-  return el ? parseFloat(el.value) : fallback;
-}
-
-/** Read a <input type=number> value by data-key */
-function _readNumber(key, fallback) {
-  const el = document.querySelector(`input[data-key="${key}"][type="number"]`);
-  return el ? parseFloat(el.value) : fallback;
-}
-
-/** Read a <input type=color> value by data-key */
-function _readColor(key, fallback) {
-  const el = document.querySelector(`input[data-key="${key}"][type="color"]`);
-  return el?.value || fallback;
+  dbg.log('[Feature]', msg);
 }
 
 /** Read a <select> value by data-key from the active feature panel */

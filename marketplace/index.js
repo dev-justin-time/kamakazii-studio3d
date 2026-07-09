@@ -33,6 +33,8 @@ export { StripeBridge } from './StripeBridge.js';
  * This is the main entry point for integrating the marketplace into the editor.
  * Instantiate once with `editorState`, then use the unified API surface.
  */
+import { dbg } from '../app/dbg.js';
+
 export class MarketplaceAPI {
   constructor(editorState, stripeOptions = {}) {
     this.editor = editorState;
@@ -73,7 +75,7 @@ export class MarketplaceAPI {
     // Re-detect mode
     bridge.mode = bridge._detectMode();
 
-    console.log(`[MarketplaceAPI] Stripe configured: ${bridge.mode === 'live' ? 'LIVE' : 'SIMULATED'} mode`);
+    dbg.log(`[MarketplaceAPI] Stripe configured: ${bridge.mode === 'live' ? 'LIVE' : 'SIMULATED'} mode`);
     return bridge.getStatus();
   }
 
@@ -142,7 +144,7 @@ export class MarketplaceAPI {
     const pluginsLoaded = this.plugins.getInstalled().length;
     const storeProducts = Array.from(this.store.products.values()).length;
 
-    console.log(`[MarketplaceAPI] Initialized (v1.0.0) — ${pluginsLoaded} plugins, ${storeProducts} products in store`);
+    dbg.log(`[MarketplaceAPI] Initialized (v1.0.0) — ${pluginsLoaded} plugins, ${storeProducts} products in store`);
     return {
       plugins: pluginsLoaded,
       products: storeProducts
@@ -168,7 +170,7 @@ export class MarketplaceAPI {
           stripePaymentIntentId: result.paymentIntent || null
         }).then(confirmResult => {
           if (confirmResult.success) {
-            console.log(`[MarketplaceAPI] Stripe payment finalized for: ${pending.productTitle}`);
+            dbg.log(`[MarketplaceAPI] Stripe payment finalized for: ${pending.productTitle}`);
             // Clean URL params
             const url = new URL(window.location);
             url.searchParams.delete('checkout');
@@ -177,11 +179,11 @@ export class MarketplaceAPI {
             window.history.replaceState({}, '', url);
           }
         }).catch(err => {
-          console.warn('[MarketplaceAPI] Failed to finalize Stripe payment:', err);
+          dbg.warn('[MarketplaceAPI] Failed to finalize Stripe payment:', err);
         });
       }
     } else if (result.result === 'cancelled') {
-      console.log('[MarketplaceAPI] Stripe checkout was cancelled by user');
+      dbg.log('[MarketplaceAPI] Stripe checkout was cancelled by user');
       // Clean URL params
       const url = new URL(window.location);
       url.searchParams.delete('checkout');

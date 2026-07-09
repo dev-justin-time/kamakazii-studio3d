@@ -2,6 +2,10 @@ import * as THREE from 'three';
 
 import { setCloudStatus, initCloudRecheck, CloudState } from '../../shared/cloud-status.js';
 
+import { dbg } from '../app/dbg.js';
+
+import { dbg } from '../app/dbg.js';
+
 export class UIManager {
     constructor(studio) {
         this.studio = studio;
@@ -333,7 +337,7 @@ export class UIManager {
                     // eslint-disable-next-line no-eval
                     eval(item.action);
                 } catch (e) {
-                    console.warn('Asset click action failed for', item.id, e);
+                    dbg.warn('Asset click action failed for', item.id, e);
                 }
             });
             container.appendChild(el);
@@ -696,7 +700,7 @@ export class UIManager {
             `;
         } catch (e) {
             // Ensure no exception bubbles from stats updates
-            console.warn('updateViewportStats safe guard caught error:', e);
+            dbg.warn('updateViewportStats safe guard caught error:', e);
         }
     }
 
@@ -816,7 +820,7 @@ export class UIManager {
             }
             if (memoryElement) memoryElement.textContent = typeof memoryUsed === 'number' ? `${memoryUsed}MB` : String(memoryUsed);
         } catch (e) {
-            console.warn('updatePerformanceUI safe guard caught error:', e);
+            dbg.warn('updatePerformanceUI safe guard caught error:', e);
         }
     }
 
@@ -1444,7 +1448,7 @@ export class UIManager {
                 await this.studio.proceduralSystem.generateGameMap();
                 this.showStatus('Game Map generated', 4000);
             } catch (err) {
-                console.error('Game Map generation failed', err);
+                dbg.error('Game Map generation failed', err);
                 this.showStatus('Game Map generation failed: ' + (err.message || 'unknown'), 6000);
             }
         });
