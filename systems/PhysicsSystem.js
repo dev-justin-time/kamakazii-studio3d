@@ -281,8 +281,55 @@ export class PhysicsSystem {
 
   /* ── Rigid Bodies ── */
 
+  /**
+   * Add a rigid body for `mesh` to the physics world.
+   *
+   * **Idempotency contract.** If the mesh already has a body, the existing
+   * body is returned IF AND ONLY IF the following fields are all identical
+   * to what the caller asked for (or the caller didn't specify them):
+   *   - `mass`  (argument)
+   *   - `opts.group`           (collisionFilterGroup)
+   *   - `opts.mask`            (collisionFilterMask)
+   *   - `opts.linearDamping`
+   *   - `opts.angularDamping`
+   *   - `opts.material`        (reference equality)
+   *
+   * If any of these differ (or were specified now where they weren't before),
+   * the stale body is torn down via `removeBody(mesh)` — which also cascades
+   * to remove any constraints, vehicles, triggers, and fluid bodies that
+   * reference the stale body — and a fresh one is created with the new config.
+   *
+   * To force a recreation unconditionally, call `removeBody(mesh)` first.
+   *
+   * @param {THREE.Mesh} mesh
+   * @param {number} [mass=1]            — 0 = static, >0 = dynamic
+   * @param {object} [opts]
+   * @param {number} [opts.group]        — collision filter group bitmask
+   * @param {number} [opts.mask]         — collision filter mask bitmask
+   * @param {number} [opts.linearDamping]
+   * @param {number} [opts.angularDamping]
+   * @param {*}      [opts.material]     — CANNON.Material instance
+   * @returns {object|null} the body, or null on failure
+   */
   addBody(mesh, mass = 1, opts = {}) {
     if (!mesh?.geometry || !this.world) return null;
+
+    // Idempotency check (see contract above). Any mismatch triggers a full
+    // teardown + recreate so the caller's intent is honoured cleanly.
+    const existing = this.meshes.find(m => m.mesh === mesh);
+    if (existing) {
+      const b = existing.body;
+      const sameGroup   = opts.group         === undefined || b.collisionFilterGroup === opts.group;
+      const sameMask    = opts.mask          === undefined || b.collisionFilterMask  === opts.mask;
+      const sameMass    = mass               === undefined || b.mass                  === mass;
+      const sameLinDamp = opts.linearDamping === undefined || b.linearDamping         === opts.linearDamping;
+      const sameAngDamp = opts.angularDamping=== undefined || b.angularDamping        === opts.angularDamping;
+      const sameMat     = opts.material      === undefined || b.material              === opts.material;
+      if (sameGroup && sameMask && sameMass && sameLinDamp && sameAngDamp && sameMat) {
+        return b;
+      }
+      this.removeBody(mesh);
+    }
 
     const geometry = mesh.geometry;
     try { geometry.computeBoundingBox?.(); } catch(_e) {}
@@ -332,13 +379,76 @@ export class PhysicsSystem {
     }
   }
 
+  /**
+   * Remove a rigid body for `mesh` from the physics world.
+   *
+   * Cascades to also remove any **dangling references** that point at the
+   * stale body:
+   *   - `this.constraints` — any constraint whose `bodyA` or `bodyB` is the
+   *     stale body. Spring constraints are removed from the local list
+   *     only (cannon doesn't add them to `world.constraints`).
+   *   - `this.vehicles` — any vehicle whose `vehicle.chassisBody` is the
+   *     stale body. Calls `vehicle.removeFromWorld(this.world)` and
+   *     invokes `_cleanupInput` if present so keyboard listeners are
+   *     detached.
+   *   - `this.triggers` — any trigger whose `body` is the stale body.
+   *   - `this._fluidBodies` — any fluid entry whose `body` is the stale body.
+   *
+   * After teardown, re-adding the same mesh via `addBody` starts from a
+   * clean slate (no double bodies, no orphan constraints, no leaked
+   * vehicle listeners).
+   */
   removeBody(mesh) {
     const idx = this.meshes.findIndex(m => m.mesh === mesh);
     if (idx < 0) return;
     const item = this.meshes[idx];
-    try { this.world?.removeBody(item.body); } catch(_e) {}
-    this._bodyMeshMap.delete(item.body);
+    const targetBody = item.body;
+    try { this.world?.removeBody(targetBody); } catch(_e) {}
+    this._bodyMeshMap.delete(targetBody);
     this.meshes.splice(idx, 1);
+
+    // ── Cascading cleanup of dangling references ──
+    // Iterate in reverse so splice() doesn't shift unvisited indices.
+    for (let i = this.constraints.length - 1; i >= 0; i--) {
+      const c = this.constraints[i];
+      if (c.bodyA === targetBody || c.bodyB === targetBody) {
+        // Springs are kept in `this.constraints` but NOT in
+        // `this.world.constraints` (see createConstraint), so calling
+        // world.removeConstraint on them would error. Guard for that.
+        if (c.type !== 'spring' && this.world?.removeConstraint) {
+          try { this.world.removeConstraint(c.constraint); } catch(_e) {}
+        }
+        this.constraints.splice(i, 1);
+      }
+    }
+
+    for (let i = this.vehicles.length - 1; i >= 0; i--) {
+      const v = this.vehicles[i];
+      if (v.vehicle?.chassisBody === targetBody) {
+        if (typeof v.vehicle.removeFromWorld === 'function') {
+          try { v.vehicle.removeFromWorld(this.world); } catch(_e) {}
+        }
+        if (typeof v._cleanupInput === 'function') {
+          try { v._cleanupInput(); } catch(_e) {}
+        }
+        this.vehicles.splice(i, 1);
+      }
+    }
+
+    const trigIdx = this.triggers.findIndex(t => t.body === targetBody);
+    if (trigIdx >= 0) this.triggers.splice(trigIdx, 1);
+
+    const fluidIdx = this._fluidBodies.findIndex(f => f.body === targetBody);
+    if (fluidIdx >= 0) this._fluidBodies.splice(fluidIdx, 1);
+
+    // Also drop any contact callbacks that referenced this body
+    // (so a stale callback doesn't fire on a body that's no longer in the world).
+    for (let i = this._contactCallbacks.length - 1; i >= 0; i--) {
+      const cb = this._contactCallbacks[i];
+      if (cb.bodyA === targetBody || cb.bodyB === targetBody) {
+        this._contactCallbacks.splice(i, 1);
+      }
+    }
   }
 
   /**
@@ -787,6 +897,9 @@ export class PhysicsSystem {
 
   _onBeginContact(event) {
     if (!event?.bodyA || !event?.bodyB) return;
+    // Stamp the phase on the event so a single `onContact` callback can
+    // tell begin from end without needing a second registration API.
+    try { Object.defineProperty(event, 'phase', { value: 'begin', configurable: true }); } catch(_) { event.phase = 'begin'; }
     for (const trigger of this.triggers) {
       const other = event.bodyA === trigger.body ? event.bodyB : event.bodyB === trigger.body ? event.bodyA : null;
       if (other && !trigger.inside.has(other)) {
@@ -795,15 +908,35 @@ export class PhysicsSystem {
       }
     }
     for (const cb of this._contactCallbacks) {
-      if ((event.bodyA === cb.bodyA && event.bodyB === cb.bodyB) ||
-          (event.bodyA === cb.bodyB && event.bodyB === cb.bodyA)) {
+      if (this._contactMatches(cb, event)) {
         try { cb.onContact(event); } catch(_e) {}
       }
     }
   }
 
+  /**
+   * Match a contact event against a registered callback. Either slot
+   * (bodyA or bodyB) in the callback may be null, in which case it's
+   * a wildcard (match any body in that slot). Both null means "match
+   * every contact".
+   */
+  _contactMatches(cb, event) {
+    const a1 = event.bodyA;
+    const b1 = event.bodyB;
+    const aWanted = cb.bodyA;
+    const bWanted = cb.bodyB;
+    // Two orders: aWanted <-> a1 AND bWanted <-> b1, OR aWanted <-> b1 AND bWanted <-> a1.
+    const order1 = (aWanted === null || aWanted === a1) && (bWanted === null || bWanted === b1);
+    const order2 = (aWanted === null || aWanted === b1) && (bWanted === null || bWanted === a1);
+    return order1 || order2;
+  }
+
   _onEndContact(event) {
     if (!event?.bodyA || !event?.bodyB) return;
+    // Symmetric with _onBeginContact — stamp the phase + notify any
+    // contact callbacks that match. Consumers who only care about
+    // collisions can filter on `event.phase === 'begin'`.
+    try { Object.defineProperty(event, 'phase', { value: 'end', configurable: true }); } catch(_) { event.phase = 'end'; }
     for (const trigger of this.triggers) {
       const other = event.bodyA === trigger.body ? event.bodyB : event.bodyB === trigger.body ? event.bodyA : null;
       if (other && trigger.inside.has(other)) {
@@ -811,9 +944,17 @@ export class PhysicsSystem {
         try { trigger.onExit?.(other, this._bodyMeshMap.get(other)); } catch(_e) {}
       }
     }
+    // Symmetric notification of contact callbacks.
+    for (const cb of this._contactCallbacks) {
+      if (this._contactMatches(cb, event)) {
+        try { cb.onContact(event); } catch(_e) {}
+      }
+    }
   }
 
   onContact(bodyA, bodyB, callback) {
+    // bodyA/bodyB may be null to act as a wildcard (match any contact
+    // involving the other specified body).
     this._contactCallbacks.push({ bodyA, bodyB, onContact: callback });
   }
 

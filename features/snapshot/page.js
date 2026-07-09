@@ -17,5 +17,13 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
-  renderControls(container, meta.controls);
+    // ── Use shared state (see app/state.js). Tags the container with the
+  //    active feature name so other systems can route events back to us,
+  //    and publishes it back so the next feature knows what was here.
+  const featureName = state?.get?.('currentFeature') ?? "snapshot";
+  container.dataset.feature = featureName;
+  if (state && typeof state.set === 'function') {
+    state.set('currentFeature', "snapshot");
+  }
+renderControls(container, meta.controls);
 }

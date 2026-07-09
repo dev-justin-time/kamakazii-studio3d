@@ -110,7 +110,11 @@ export class StudioShell {
     this._popupContent.id = 'popupContent';
     this._popupContent.style.cssText = 'background:#1e1e2e;border-radius:8px;border:1px solid #444;min-width:320px;max-width:480px;max-height:80vh;overflow-y:auto;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.5);';
     this._popupOverlay.appendChild(this._popupContent);
-    this._popupOverlay.addEventListener('click', (e) => { if (e.target === this._popupOverlay) this._closePopup(); });
+    this._popupOverlay.addEventListener('click', (e) => {
+      if (e.target !== this._popupOverlay) return;
+      if (this._popupOverlay._dismissOnOverlayClick === false) return;
+      this._closePopup();
+    });
     document.body.appendChild(this._popupOverlay);
 
     // ── Render icons ──
@@ -415,8 +419,68 @@ export class StudioShell {
   }
 
   _closePopup() {
+    // Fire the custom close hook (if any) before tearing down so
+    // a picker can re-enable its caller or persist selection.
+    if (typeof this._customOnClose === 'function') {
+      try { this._customOnClose(); } catch (_) {}
+      this._customOnClose = null;
+    }
     this._popupOverlay.style.display = 'none';
     this._activePopup = null;
+  }
+
+  /**
+   * Open a custom inline modal in the popup-content area, bypassing the
+   * feature-page loading system. Used by engine.js menu actions that
+   * need a quick picker (e.g. constraint type selector, constraint list
+   * remover) without the overhead of a full features/<id>/page.js.
+   *
+   * @param {object} config
+   * @param {string} config.title             - H2-style header text
+   * @param {HTMLElement|string} config.content
+   *   - HTMLElement to append into the popup, OR
+   *   - string of HTML to insertAdjacentHTML
+   * @param {Function} [config.onClose]       - called when the popup closes
+   *   (via ×, overlay click, or OK). Optional.
+   * @param {boolean} [config.showOk=true]    - append an "OK ✓" button that
+   *   closes the popup. Set false if the content manages its own
+   *   dismiss buttons (e.g. a picker that closes on item-click).
+   * @param {string} [config.okLabel='OK ✓']  - label for the OK button
+   * @param {boolean} [config.dismissOnOverlayClick=true]
+   *   - whether clicking the dark overlay closes the popup.
+   */
+  openCustomPopup(config) {
+    if (!config || !config.content) return;
+    const { title, content, onClose, showOk = true, okLabel = 'OK ✓', dismissOnOverlayClick = true } = config;
+    this._popupContent.innerHTML = '';
+    this._customOnClose = typeof onClose === 'function' ? onClose : null;
+    if (title) {
+      const header = document.createElement('div');
+      header.style.cssText = 'margin-bottom:16px;font-size:16px;font-weight:600;color:#eee';
+      header.textContent = title;
+      this._popupContent.appendChild(header);
+    }
+    if (typeof content === 'string') {
+      this._popupContent.insertAdjacentHTML('beforeend', content);
+    } else if (content instanceof HTMLElement) {
+      this._popupContent.appendChild(content);
+    } else {
+      this._popupContent.appendChild(document.createTextNode(String(content)));
+    }
+    if (showOk) {
+      const ok = document.createElement('button');
+      ok.textContent = okLabel;
+      ok.style.cssText = 'margin-top:16px;width:100%;padding:10px;border:none;border-radius:6px;background:#4a9eff;color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;';
+      ok.addEventListener('mouseenter', () => ok.style.background = '#3a8eef');
+      ok.addEventListener('mouseleave', () => ok.style.background = '#4a9eff');
+      ok.addEventListener('click', () => this._closePopup());
+      this._popupContent.appendChild(ok);
+    }
+    this._popupOverlay.style.display = 'flex';
+    this._activePopup = 'custom';
+    // Disable the overlay-click-to-dismiss handler if the caller wants to
+    // own dismissal. We do this by setting a flag and re-binding the listener.
+    this._popupOverlay._dismissOnOverlayClick = dismissOnOverlayClick;
   }
 
   /** Update status bar text */

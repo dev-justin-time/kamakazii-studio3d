@@ -55,6 +55,7 @@ export default [
         TextDecoder: 'readonly',
         WebSocket: 'readonly',
         requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
         performance: 'readonly',
         // Used by some modules
         setTimeout: 'readonly',
@@ -63,6 +64,56 @@ export default [
         clearInterval: 'readonly',
         // Stripe / payment globals used in the marketplace module
         Stripe: 'readonly',
+        // Browser APIs frequently used across features/page.js files
+        URLSearchParams: 'readonly',
+        CustomEvent: 'readonly',
+        BroadcastChannel: 'readonly',
+        MutationObserver: 'readonly',
+        DOMParser: 'readonly',
+        Event: 'readonly',
+        FileReader: 'readonly',
+        Image: 'readonly',
+        HTMLImageElement: 'readonly',
+        HTMLCanvasElement: 'readonly',
+        HTMLDivElement: 'readonly',
+        HTMLElement: 'readonly',
+        HTMLInputElement: 'readonly',
+        EventTarget: 'readonly',
+        DeviceOrientationEvent: 'readonly',
+        OfflineAudioContext: 'readonly',
+        AudioContext: 'readonly',
+        Audio: 'readonly',
+        navigator: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        location: 'readonly',
+        history: 'readonly',
+        screen: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        prompt: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
+        // Browser / web-platform APIs frequently used across the tree
+        // (added to clear no-undef warnings — see docs/dbnu.md for the
+        // full list of items resolved in this pass).
+        fetch: 'readonly',
+        getComputedStyle: 'readonly',
+        ResizeObserver: 'readonly',
+        SpeechSynthesisUtterance: 'readonly',
+        speechSynthesis: 'readonly',
+        // Third-party libraries loaded via <script> tags
+        // (puter.js, nipplejs, websim). These expose globals.
+        puter: 'readonly',
+        nipplejs: 'readonly',
+        websim: 'readonly',
+        WebsimSocket: 'readonly',
+        // Three.js often pulled in alongside the app
+        THREE: 'readonly',
+        CONFIG: 'readonly',
+        Stats: 'readonly',
+        // Tailwind compile-time inject
+        tailwind: 'readonly',
       },
     },
     rules: {

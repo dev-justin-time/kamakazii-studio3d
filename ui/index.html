@@ -158,6 +158,16 @@
 
   <script type="module">
     // ── Imports ──
+    // shared/studio-globals.js attaches `_getApp`, `log`, `websim`, and
+    // `WebsimSocket` to `window` as a side-effect on load. That MUST
+    // happen before any dynamic `import('../features/${id}/page.js')`
+    // resolves, because those feature pages were written assuming the
+    // `_getApp` global is available (declared via `/* global _getApp */`).
+    // Without this early import, clicking any icon in the icon bar would
+    // throw `ReferenceError: _getApp is not defined` at the top of the
+    // feature page module (e.g. animate/page.js:79).
+    // eslint-disable-next-line import/no-unused-modules
+    import '../shared/studio-globals.js';
     import { state } from '../app/state.js';
     import { cache } from '../app/cache.js';
     import { aiBridge } from '../app/ai-bridge.js';

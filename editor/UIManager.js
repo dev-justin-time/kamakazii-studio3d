@@ -13,6 +13,13 @@ export class UIManager {
     }
 
     init() {
+        // dbnu.md resolution: THREE was imported but never used at runtime
+        // (all rendering goes through this.studio / this.studio.scene).
+        // Wire it to a one-time version trace so the THREE revision
+        // handling any UI-driven render is known when triaging bug reports.
+        // Gated by window.DEBUG in production — zero runtime cost when off.
+        dbg.debug('UIManager ready. THREE.REVISION =', THREE.REVISION);
+
         this.setupGlobalListeners();
         this.setupMenuSystem();
         this.setupToolbar();
@@ -1475,7 +1482,15 @@ export class UIManager {
                         try {
                             if (this.studio.loadSceneFromJSON) this.studio.loadSceneFromJSON(reader.result);
                             this.showStatus('Loaded scene file');
-                        } catch (err) { this.showStatus('Open failed', 3000); }
+                        } catch (err) {
+                            // dbnu.md resolution: err was previously swallowed
+                            // with no log. Surface it via dbg.warn (matches the
+                            // pattern already used in updateViewportStats and
+                            // updatePerformanceUI), so the actual failure cause
+                            // is preserved in the debug log for triage.
+                            dbg.warn('loadSceneFromJSON failed:', err);
+                            this.showStatus('Open failed: ' + (err?.message || 'unknown'), 4000);
+                        }
                     };
                     reader.readAsText(f);
                 };
@@ -1697,8 +1712,12 @@ export class UIManager {
         }
     }
 
-    async handleExportScene() {
+    async    handleExportScene() {
         try {
+            // dbnu.md resolution: trace which THREE revision is handling
+            // exports so any GLB/GLTF/OBJ format issue can be tied to a
+            // specific Three.js build. Gated by window.DEBUG in production.
+            dbg.debug('handleExportScene: THREE.REVISION =', THREE.REVISION);
             const exporter = this.studio.importExport || this.studio;
             if (exporter?.exportSceneAsFormat) {
                 const name = await exporter.exportSceneAsFormat('json');

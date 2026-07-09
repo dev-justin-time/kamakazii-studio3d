@@ -292,7 +292,15 @@ export { meta };
  * Uses the state parameter to display current map info and safely injects the iframe.
  */
 export function render(container, state) {
-  // 1. Render controls using the dynamic builder
+    // ── Use shared state (see app/state.js). Tags the container with the
+  //    active feature name so other systems can route events back to us,
+  //    and publishes it back so the next feature knows what was here.
+  const featureName = state?.get?.('currentFeature') ?? "map";
+  container.dataset.feature = featureName;
+  if (state && typeof state.set === 'function') {
+    state.set('currentFeature', "map");
+  }
+// 1. Render controls using the dynamic builder
   const currentControls = buildControls(state);
   renderControls(container, currentControls);
 

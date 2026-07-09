@@ -1,7 +1,48 @@
 /**
  * Motion Capture — Record, import/export animation data, retarget
+ *
+ * The `state` parameter is the shared StudioState instance (see app/state.js).
+ * We use it to:
+ *   - Read the current recording state ('recording' boolean) so the UI label
+ *     stays in sync with other features.
+ *   - Publish playback + keyframe counts back into shared state for the
+ *     inspector / status bar to display.
  */
 import { renderControls } from '../_shared/renderControls.js';
+import { dbg } from '../../app/dbg.js';
+
+/** Local logger — surfaces to dbg.error/log via the shared dbg gate. */
+function log(msg, level = 'info') {
+  const fn = dbg[level] || dbg.log;
+  fn('[mocap]', msg);
+}
+
+/** Get the global app handle. Equivalent to window.ProModelerApp. */
+function _getApp() {
+  return window.ProModelerApp;
+}
+
+/**
+ * Refresh the mocap UI: update labels to reflect current keyframe counts and
+ * the recording state. Cheap to call; safe to invoke after every action.
+ */
+function _refreshUI() {
+  const app = _getApp();
+  if (!app) return;
+  const keyframeCount = (() => {
+    if (!app.keyframes) return 0;
+    let n = 0;
+    for (const arr of app.keyframes.values()) n += arr.length;
+    return n;
+  })();
+  const objectCount = app.keyframes ? app.keyframes.size : 0;
+  const label = document.querySelector('#popupContent [data-key="mocap-info"] .ctrl-label');
+  if (label) label.textContent = `Keyframes: ${keyframeCount} across ${objectCount} object(s)`;
+  const recBtn = document.querySelector('#popupContent [data-key="record-toggle"] .ctrl-button');
+  if (recBtn) recBtn.textContent = app.isRecording ? '⏹ Stop Recording' : '⏺ Record Animation';
+  const playBtn = document.querySelector('#popupContent [data-key="play-mocap"] .ctrl-button');
+  if (playBtn) playBtn.textContent = app.isAnimationPlaying ? '⏸ Pause' : '▶ Play Captured Animation';
+}
 
 const meta = {
   controls: [
@@ -130,5 +171,15 @@ const meta = {
 
 export { meta };
 export function render(container, state) {
+  // Use shared state to tag the container and pull the initial recording flag.
+  const featureName = state?.get?.('currentFeature') ?? 'mocap';
+  container.dataset.feature = featureName;
+  if (state && typeof state.get === 'function') {
+    const wasRecording = state.get('isRecording');
+    if (typeof wasRecording === 'boolean' && _getApp()) {
+      _getApp().isRecording = wasRecording;
+    }
+  }
   renderControls(container, meta.controls);
+  _refreshUI();
 }

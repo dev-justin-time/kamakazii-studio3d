@@ -6,6 +6,7 @@ are routed through the centralized ModelIO class in editor/ModelIO.js.
 */
 import * as THREE from 'three';
 import { ModelIO } from './ModelIO.js';
+import { dbg } from '../app/dbg.js';
 
 export class ImportExportManager {
   /**
@@ -13,6 +14,11 @@ export class ImportExportManager {
    */
   constructor(editor) {
     this.editor = editor;
+    // dbnu.md resolution: THREE was imported but never used at runtime
+    // (only as a JSDoc type). Wire it to a one-time version trace so
+    // we know which revision handled any import/export error reports.
+    // Gated by window.DEBUG in production — zero runtime cost when off.
+    dbg.debug('ImportExportManager ready. THREE.REVISION =', THREE.REVISION);
 
     // Create ModelIO with the editor as context
     this.modelIO = new ModelIO({

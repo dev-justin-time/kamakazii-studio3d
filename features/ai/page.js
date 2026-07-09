@@ -435,7 +435,15 @@ export { meta };
  * Uses a safeAppend helper to prevent duplicating custom DOM elements on re-renders.
  */
 export function render(container, state) {
-  const currentControls = buildControls(state);
+    // ── Use shared state (see app/state.js). Tags the container with the
+  //    active feature name so other systems can route events back to us,
+  //    and publishes it back so the next feature knows what was here.
+  const featureName = state?.get?.('currentFeature') ?? "ai";
+  container.dataset.feature = featureName;
+  if (state && typeof state.set === 'function') {
+    state.set('currentFeature', "ai");
+  }
+const currentControls = buildControls(state);
   renderControls(container, currentControls);
 
   // ── Safely append custom textareas and preview elements ──

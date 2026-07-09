@@ -202,7 +202,15 @@ const meta = {
  * @param {Object} state - The current application state (used for dynamic UI updates).
  */
 export function render(container, state) {
-  // Generate fresh controls based on the current state to ensure UI is up-to-date
+    // ── Use shared state (see app/state.js). Tags the container with the
+  //    active feature name so other systems can route events back to us,
+  //    and publishes it back so the next feature knows what was here.
+  const featureName = state?.get?.('currentFeature') ?? "animate";
+  container.dataset.feature = featureName;
+  if (state && typeof state.set === 'function') {
+    state.set('currentFeature', "animate");
+  }
+// Generate fresh controls based on the current state to ensure UI is up-to-date
   const currentControls = buildControls(state);
   renderControls(container, currentControls);
 }

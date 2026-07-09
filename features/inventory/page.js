@@ -8,16 +8,30 @@
  *
  * Exposed via `window.ProModelerApp.getDefaultModels()` so scripts/testing
  * tooling can also drive the registry programmatically.
+ *
+ * The `state` parameter is the shared StudioState instance (see app/state.js).
+ * We use it to (1) tag the container with the active feature name,
+ * (2) pull the studio handle from shared state if provided, and
+ * (3) publish the currently-loaded model slug so other features (e.g.
+ * inspector) can react.
  */
 
-import { DEFAULT_MODELS } from '../../app/defaultModels.js';
+import { DEFAULT_MODELS, listDefaultModelSlugs } from '../../app/defaultModels.js';
 import { dbg } from '../../app/dbg.js';
 
 // Pure-DOM render — popupContent lives in features/_shared/popupPage.js
 // but we implement inline here for tighter styling control of the grid.
 export function render(container, state) {
+  // ── Use shared state: pull the studio handle from state if available,
+  //    fall back to the global. Also tag the container + publish the
+  //    current feature name for downstream routing.
   const studio = (state && typeof state.get === 'function' && state.get('studio'))
               || window.ProModelerApp;
+  const featureName = state?.get?.('currentFeature') ?? 'inventory';
+  container.dataset.feature = featureName;
+  if (state && typeof state.set === 'function') {
+    state.set('currentFeature', 'inventory');
+  }
 
   container.innerHTML = '';
 
@@ -52,7 +66,7 @@ export function render(container, state) {
     grid.style.cssText = 'display:grid;grid-template-columns:1fr;gap:6px;';
 
     list.forEach(model => {
-      grid.appendChild(_renderCard(model, studio, container));
+      grid.appendChild(_renderCard(model, studio, container, state));
     });
 
     container.appendChild(grid);
@@ -77,7 +91,7 @@ export function render(container, state) {
  * and a Load button. While loading, the card swaps its button to a status
  * label so multiple clicks don't queue duplicate fetches.
  */
-function _renderCard(model, studio, container) {
+function _renderCard(model, studio, container, state) {
   const card = document.createElement('div');
   card.style.cssText = [
     'display:flex', 'align-items:center', 'gap:10px',
@@ -189,6 +203,10 @@ function _renderCard(model, studio, container) {
         btn.textContent = 'Loaded ✓';
         btn.style.background = '#22a55a';
         card.style.borderColor = '#22a55a';
+        // Publish the loaded slug so other features (e.g. inspector) can react.
+        if (state && typeof state.set === 'function') {
+          state.set('loadedModelSlug', model.slug);
+        }
       } else {
         btn.textContent = 'Failed';
         btn.style.background = '#a04040';
@@ -198,7 +216,6 @@ function _renderCard(model, studio, container) {
       btn.textContent = 'Error';
       btn.style.background = '#a04040';
       btn.disabled = false;
-      // eslint-disable-next-line no-console
       dbg.error('Load failed:', err);
     }
   });
