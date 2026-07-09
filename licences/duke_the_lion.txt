@@ -1,0 +1,11 @@
+Model Information:
+* title:	Duke the lion
+* source:	https://sketchfab.com/3d-models/duke-the-lion-7cec7284692c4ad58ce6224d27276f6a
+* author:	JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Duke the lion" (https://sketchfab.com/3d-models/duke-the-lion-7cec7284692c4ad58ce6224d27276f6a) by JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

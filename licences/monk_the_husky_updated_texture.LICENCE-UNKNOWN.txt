@@ -1,0 +1,10 @@
+LICENSE STATUS: UNKNOWN
+
+The .glb at ./assets/models/monk_the_husky_updated_texture.glb ships
+WITHOUT its own license.txt. The folder variant
+(monk_the_husky_updated_texture_dir → assets/models/monk_the_husky_updated_texture/)
+DOES ship a license.txt, which is copied to
+./licences/monk_the_husky_updated_texture.txt as the consolidated
+attribution. This stub is for the separately tracked loose-.glb slug.
+Rename to ./licences/monk_the_husky_updated_texture.glb.txt once a
+dedicated licence ships with that specific bundle.

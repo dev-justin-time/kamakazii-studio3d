@@ -2675,24 +2675,99 @@ export class Studio {
     });
     log('Project loaded');
   }
-
-  newProject() {
+  /**
+   * Start a fresh project.
+   *
+   * @param {Object} [opts]
+   * @param {string[]} [opts.starterSlugs]
+   *   Optional list of bundled default-model slugs (see app/defaultModels.js)
+   *   to seed into the new scene. Each loaded model is scattered in a grid
+   *   around the origin so multiple picks do not overlap.
+   *   Empty list (default) keeps the legacy behaviour: spawn the default cube.
+   */
+  newProject(opts = {}) {
     this.pushUndo();
     this.objects.forEach(o => this.scene.remove(o));
     this.objects = [];
     this.keyframes.clear();
-    const geo = new THREE.BoxGeometry(1, 1, 1);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.3, metalness: 0.1 });
-    const cube = new THREE.Mesh(geo, mat);
-    cube.castShadow = true;
-    cube.receiveShadow = true;
-    cube.name = 'Cube';
-    this.scene.add(cube);
-    this.objects.push(cube);
-    this.selectObject(cube);
-    log('New project');
+    // Reset the in-flight default-model guard so we do not bail on our own
+    // multiple-load trigger below.
+    this._defaultModelLoading = null;
+
+    const starterSlugs = Array.isArray(opts.starterSlugs) ? opts.starterSlugs : [];
+
+    if (starterSlugs.length === 0) {
+      // Legacy path - single default cube so the viewport is not blank.
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const mat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.3, metalness: 0.1 });
+      const cube = new THREE.Mesh(geo, mat);
+      cube.castShadow = true;
+      cube.receiveShadow = true;
+      cube.position.y = 0;
+      cube.name = 'Cube';
+      this.scene.add(cube);
+      this.objects.push(cube);
+      this.selectObject(cube);
+      log('New project');
+      return;
+    }
+
+    // Multi-load path - scatter picked starter assets around the origin.
+    log(`New project: seeding ${starterSlugs.length} starter asset(s)`);
+    this._defaultModelLoading = (async () => {
+      try {
+        const results = await this.loadDefaultModels(starterSlugs);
+        const ok = results.filter(r => r && r.root).length;
+        log(`New project: seeded ${ok}/${starterSlugs.length} starter asset(s)`);
+        if (ok > 0 && typeof this.frameAll === 'function') this.frameAll();
+      } catch (err) {
+        log(`New project starter load failed: ${err && err.message ? err.message : err}`, 'error');
+      } finally {
+        this._defaultModelLoading = null;
+      }
+    })();
   }
 
+  /**
+   * Load a list of default-model slugs into the scene, scattered in a
+   * grid around the origin. Each successful load is registered in
+   * this.objects (loadDefaultModel already calls pushUndo). Returns
+   * `{ slug, root, error? }` results so the caller can surface partial
+   * failures without throwing.
+   *
+   * Used by newProject(opts.starterSlugs) and can also be called directly
+   * from feature pages / scripts for a quick "seed the scene" button.
+   *
+   * @param {string[]} slugs
+   * @returns {Promise<Array<{slug:string, root:THREE.Object3D|null, error?:string}>>}
+   */
+  async loadDefaultModels(slugs) {
+    if (!Array.isArray(slugs) || slugs.length === 0) return [];
+    const cols = Math.max(1, Math.ceil(Math.sqrt(slugs.length)));
+    const cellSize = 3.5;     // metres between scattered models
+    const rows = Math.ceil(slugs.length / cols);
+    const results = [];
+    for (let i = 0; i < slugs.length; i++) {
+      const slug = slugs[i];
+      try {
+        // loadDefaultModel awaits the previous _defaultModelLoading, so
+        // successive calls serialise cleanly without re-entering the guard.
+        const root = await this.loadDefaultModel(slug);
+        if (root && root.position) {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          // loadDefaultModel already aligned to ground (y = -0.5); preserve
+          // that and only offset x/z so characters do not stack on origin.
+          root.position.x = (col - (cols - 1) / 2) * cellSize;
+          root.position.z = (row - (rows - 1) / 2) * cellSize;
+        }
+        results.push({ slug, root });
+      } catch (err) {
+        results.push({ slug, root: null, error: err && err.message ? err.message : String(err) });
+      }
+    }
+    return results;
+  }
   // ── Bundled default models (.glb and glTF-folder assets under assets/models/)
 
   /**

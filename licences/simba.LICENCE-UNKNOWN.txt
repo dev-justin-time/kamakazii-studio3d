@@ -1,0 +1,12 @@
+LICENSE STATUS: UNKNOWN
+
+The packaged .glb file at ./assets/models/simba.glb has no license.txt
+shipped alongside it. Add a Sketchfab-exported license.txt from the
+canonical source URL above (or a fitting alt-license) and rename this
+stub to:  ./licences/simba.txt
+
+When the upstream license is confirmed, mirror it back at:
+    ./assets/models/simba/license.txt
+
+Then update app/defaultModels.js — `simba` — to drop the
+.LICENCE-UNKNOWN stub suffix.

@@ -1,0 +1,9 @@
+LICENSE STATUS: UNKNOWN
+
+The packaged .glb file at
+./assets/models/jessie_the_fox_updated_texture.glb has no license.txt
+shipped alongside it. Add a Sketchfab-exported license.txt and rename
+this stub to:  ./licences/jessie_the_fox_updated_texture.txt
+
+When the upstream license is confirmed, mirror it back at:
+    ./assets/models/jessie_the_fox_updated_texture/license.txt

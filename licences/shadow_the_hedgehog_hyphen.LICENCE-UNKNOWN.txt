@@ -1,0 +1,12 @@
+LICENSE STATUS: UNKNOWN
+
+The folder at
+./assets/models/shadow-the-hedgehog-sonic-forcesgmod/ has no
+license.txt alongside its scene.gltf / .bin / textures. The canonical
+source URL is the Sketchfab page for the hyphen variant of the
+Shadow-the-Hedgehog model. Add a Sketchfab-exported license.txt and
+rename this stub to:
+    ./licences/shadow_the_hedgehog_hyphen.txt
+
+When the upstream license is confirmed, mirror it back at:
+    ./assets/models/shadow-the-hedgehog-sonic-forcesgmod/license.txt

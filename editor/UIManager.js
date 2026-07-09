@@ -4,8 +4,6 @@ import { setCloudStatus, initCloudRecheck, CloudState } from '../../shared/cloud
 
 import { dbg } from '../app/dbg.js';
 
-import { dbg } from '../app/dbg.js';
-
 export class UIManager {
     constructor(studio) {
         this.studio = studio;

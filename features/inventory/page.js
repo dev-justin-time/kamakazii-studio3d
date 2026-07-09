@@ -121,6 +121,46 @@ function _renderCard(model, studio, container) {
   desc.style.cssText = 'font-size:10px;color:#666;margin-top:2px;line-height:1.4;';
   desc.textContent = model.description;
   text.appendChild(desc);
+  // ── Licence badge (so the user always sees the terms before loading) ──
+  if (model.licenseFile) {
+    const licenceRow = document.createElement('div');
+    licenceRow.style.cssText = [
+      'display:flex', 'align-items:center', 'gap:6px',
+      'margin-top:4px', 'padding-top:3px',
+      'border-top:1px solid rgba(255,255,255,0.06)',
+      'font-size:9px', 'line-height:1.3',
+    ].join(';');
+    const isUnknown = model.licenseFile.includes('LICENCE-UNKNOWN');
+    const badge = document.createElement('span');
+    badge.style.cssText = [
+      'display:inline-block', 'flex:0 0 auto',
+      'padding:1px 5px', 'border-radius:3px',
+      'font-weight:600', 'letter-spacing:0.4px',
+      isUnknown
+        ? 'background:rgba(255,170,0,0.18);color:#ffaa00;border:1px solid rgba(255,170,0,0.4);'
+        : 'background:rgba(74,158,255,0.18);color:#4a9eff;border:1px solid rgba(74,158,255,0.4);',
+    ].join(';');
+    badge.textContent = isUnknown ? '⚠ unknown' : 'CC ⚖';
+    licenceRow.appendChild(badge);
+    const link = document.createElement('a');
+    link.href = model.licenseFile;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.style.cssText = [
+      'flex:1', 'min-width:0',
+      'overflow:hidden', 'text-overflow:ellipsis', 'white-space:nowrap',
+      'color:#888', 'text-decoration:none',
+      'cursor:pointer',
+    ].join(';');
+    link.title = model.licenseFile;
+    link.textContent = isUnknown
+      ? `${model.licenseFile.split('/').pop()}  (replace before shipping)`
+      : model.licenseFile.split('/').pop();
+    link.addEventListener('mouseenter', () => { link.style.color = '#4a9eff'; });
+    link.addEventListener('mouseleave', () => { link.style.color = '#888'; });
+    licenceRow.appendChild(link);
+    text.appendChild(licenceRow);
+  }
   card.appendChild(text);
 
   // Load button

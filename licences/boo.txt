@@ -1,0 +1,11 @@
+Model Information:
+* title:	Boo
+* source:	https://sketchfab.com/3d-models/boo-4f415997a00a4eacbf2f9da45f5f2b69
+* author:	Heiner Morales (https://sketchfab.com/hfmm99)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Boo" (https://sketchfab.com/3d-models/boo-4f415997a00a4eacbf2f9da45f5f2b69) by Heiner Morales (https://sketchfab.com/hfmm99) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

@@ -44,6 +44,8 @@ export const DEFAULT_MODELS = [
     character: 'lion',
     tags: ['lion', 'cub', 'star-sparrow'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/simba.txt",
   },
   {
     slug: 'jessie_the_fox_updated_texture',
@@ -54,6 +56,8 @@ export const DEFAULT_MODELS = [
     character: 'fox',
     tags: ['fox', 'vixen'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/jessie_the_fox_updated_texture.txt",
   },
   {
     slug: 'jack_the_wolf_updated_texture',
@@ -64,6 +68,8 @@ export const DEFAULT_MODELS = [
     character: 'wolf',
     tags: ['wolf'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/jack_the_wolf_updated_texture.txt",
   },
   {
     slug: 'monk_the_husky_updated_texture',
@@ -74,6 +80,8 @@ export const DEFAULT_MODELS = [
     character: 'husky',
     tags: ['husky', 'sled-dog'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/monk_the_husky_updated_texture.txt",
   },
 
   // ── Mario-universe ghosts ──
@@ -86,6 +94,8 @@ export const DEFAULT_MODELS = [
     character: 'ghost',
     tags: ['mario', 'boo', 'boss'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/big_boo_super_mario_world_custom.txt",
   },
   {
     slug: 'boo',
@@ -96,6 +106,8 @@ export const DEFAULT_MODELS = [
     character: 'ghost',
     tags: ['mario', 'boo'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/boo.txt",
   },
   {
     slug: 'cute_spooky_cat',
@@ -106,6 +118,8 @@ export const DEFAULT_MODELS = [
     character: 'cat',
     tags: ['spooky', 'cat', 'ghost'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/cute_spooky_cat.txt",
   },
 
   // ── Forest-cast lineup (Big-Bad-Wolfwood / Star-Sparrow series) ──
@@ -118,6 +132,8 @@ export const DEFAULT_MODELS = [
     character: 'lion',
     tags: ['lion', 'mane'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/duke_the_lion.txt",
   },
   {
     slug: 'henery_hawk',
@@ -128,6 +144,8 @@ export const DEFAULT_MODELS = [
     character: 'hawk',
     tags: ['hawk', 'bird'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/henery_hawk.txt",
   },
   {
     slug: 'jack_the_wolf',
@@ -138,6 +156,8 @@ export const DEFAULT_MODELS = [
     character: 'wolf',
     tags: ['wolf'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/jack_the_wolf.txt",
   },
   {
     slug: 'jack_the_wolf_updated_texture_dir',
@@ -148,6 +168,8 @@ export const DEFAULT_MODELS = [
     character: 'wolf',
     tags: ['wolf'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/jack_the_wolf_updated_texture_dir.txt",
   },
   {
     slug: 'jade_the_tiger',
@@ -158,6 +180,8 @@ export const DEFAULT_MODELS = [
     character: 'tiger',
     tags: ['tiger', 'jade'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/jade_the_tiger.txt",
   },
   {
     slug: 'monk_the_husky',
@@ -168,6 +192,8 @@ export const DEFAULT_MODELS = [
     character: 'husky',
     tags: ['husky', 'sled-dog'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/monk_the_husky.txt",
   },
   {
     slug: 'monk_the_husky_updated_texture_dir',
@@ -178,6 +204,8 @@ export const DEFAULT_MODELS = [
     character: 'husky',
     tags: ['husky', 'sled-dog'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/monk_the_husky_updated_texture_dir.txt",
   },
   {
     slug: 'nix_the_fox',
@@ -188,6 +216,8 @@ export const DEFAULT_MODELS = [
     character: 'fox',
     tags: ['fox'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/nix_the_fox.txt",
   },
   {
     slug: 'nix_the_fox_updated_texture',
@@ -198,6 +228,8 @@ export const DEFAULT_MODELS = [
     character: 'fox',
     tags: ['fox'],
     fidelity: 'updated',
+  
+    licenseFile: "./licences/nix_the_fox_updated_texture.txt",
   },
   {
     slug: 'shadow_the_hedgehog',
@@ -208,6 +240,8 @@ export const DEFAULT_MODELS = [
     character: 'hedgehog',
     tags: ['hedgehog', 'sonic', 'shadow'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/shadow_the_hedgehog.txt",
   },
   {
     slug: 'shadow_the_hedgehog_hyphen',
@@ -218,6 +252,8 @@ export const DEFAULT_MODELS = [
     character: 'hedgehog',
     tags: ['hedgehog', 'sonic', 'shadow'],
     fidelity: 'original',
+  
+    licenseFile: "./licences/shadow_the_hedgehog_hyphen.txt",
   },
 ];
 
