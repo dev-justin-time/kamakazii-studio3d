@@ -1,0 +1,11 @@
+Model Information:
+* title:	Shadow The Hedgehog (Sonic Forces/GMOD)
+* source:	https://sketchfab.com/3d-models/shadow-the-hedgehog-sonic-forcesgmod-061375f376d74cb298282e7d8dd8d479
+* author:	Portycraft (https://sketchfab.com/Portycraft)
+
+Model License:
+* license type:	CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)
+* requirements:	Author must be credited. No commercial use.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Shadow The Hedgehog (Sonic Forces/GMOD)" (https://sketchfab.com/3d-models/shadow-the-hedgehog-sonic-forcesgmod-061375f376d74cb298282e7d8dd8d479) by Portycraft (https://sketchfab.com/Portycraft) licensed under CC-BY-NC-4.0 (http://creativecommons.org/licenses/by-nc/4.0/)

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Monk The Husky
+* source:	https://sketchfab.com/3d-models/monk-the-husky-f6c05cfbf93249db9f7ea9227884d885
+* author:	JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Monk The Husky" (https://sketchfab.com/3d-models/monk-the-husky-f6c05cfbf93249db9f7ea9227884d885) by JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

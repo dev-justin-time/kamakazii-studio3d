@@ -1,0 +1,11 @@
+Model Information:
+* title:	Nix the fox (updated texture)
+* source:	https://sketchfab.com/3d-models/nix-the-fox-updated-texture-3f4a3e74e1a44919a9c688a615da0b4f
+* author:	JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Nix the fox (updated texture)" (https://sketchfab.com/3d-models/nix-the-fox-updated-texture-3f4a3e74e1a44919a9c688a615da0b4f) by JohnTheRobotCat (https://sketchfab.com/JohnTheRobotCat) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

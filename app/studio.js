@@ -20,6 +20,7 @@ import { safeGetColor, safeGetColorHexStr, safeCopyColor } from './material-help
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';
+import { DEFAULT_MODELS, findDefaultModel, resolveDefaultPackage } from './defaultModels.js';
 
 // ── Log helper ──
 const log = (msg, type = 'info') => {
@@ -1719,6 +1720,10 @@ export class Studio {
   /**
    * Create animation mixers and play all animation clips found on an imported model.
    * Stores mixers in this._mixers so they're updated every frame.
+   *
+   * Also auto-extracts unique clips into the Motion Database so re-imports
+   * cannot create duplicate entries (signature-dedup in motionStorage).
+   * Extraction is fire-and-forget — UI status is updated via log().
    */
   _playAnimationClips(root, clips) {
     if (!clips || clips.length === 0) return;
@@ -1732,6 +1737,80 @@ export class Studio {
     }
     this._mixers.push(mixer);
     log(`▶ Playing ${clips.length} animation clip(s) on imported model`);
+
+    // ── Auto-extract clips to the Motion Database ─────────────
+    // Skip on library loads that opt out of extraction (none today,
+    // but the flag is here so future private assets can disable).
+    if (!this._motionExtractionDisabled) {
+      import('../editor/motionStorage.js').then(({ extractAndSaveMotions }) => {
+        extractAndSaveMotions(clips, root?.name || 'imported', root?.name || '').then(({ added, skipped }) => {
+          if (added > 0) log(`💾 Extracted ${added} new motion(s) to motion database (${skipped} duplicate skipped)`);
+        });
+      }).catch(() => { /* motionStorage unavailable — silent */ });
+    }
+  }
+
+  /**
+   * Apply a stored motion (from the Motion Database) to the currently
+   * selected scene object. The clip is rehydrated via
+   * `THREE.AnimationClip.parse(clipJson)` — this is the same round-trip
+   * path `clip.toJSON()` uses, so stored clips play back losslessly.
+   *
+   * Track names are scrubbed of the source model's root at extraction
+   * time, so the same clip can land on a target with a different
+   * skeleton as long as the tail of each track name matches a real
+   * bone / node inside the target. Tracks that can't bind are silently
+   * ignored by THREE.AnimationMixer (Three.js native behaviour).
+   *
+   * @param {string} motionId  — id from a `listMotions()` index entry
+   * @param {THREE.Object3D} [targetOverride] — defaults to this.selectedObject
+   * @returns {Promise<{ok:boolean, reason?:string, boundTracks?:number, totalTracks?:number}>}
+   */
+  async applyMotionToObject(motionId, targetOverride) {
+    const target = targetOverride || this.selectedObject;
+    if (!target) return { ok: false, reason: 'no-target-selected' };
+
+    let entry;
+    try {
+      const { getMotion } = await import('../editor/motionStorage.js');
+      entry = await getMotion(motionId);
+    } catch (e) {
+      return { ok: false, reason: 'storage-unavailable' };
+    }
+    if (!entry || !entry.clipJson) return { ok: false, reason: 'motion-not-found' };
+
+    this.pushUndo();
+
+    // Stop any existing mixers playing on this exact target so the new
+    // animation cleanly replaces the old one rather than stomping on it.
+    for (let i = this._mixers.length - 1; i >= 0; i--) {
+      const m = this._mixers[i];
+      if (m && m._root === target) {
+        m.stopAllAction();
+        this._mixers.splice(i, 1);
+      }
+    }
+
+    let clip;
+    try {
+      clip = THREE.AnimationClip.parse(entry.clipJson);
+    } catch (e) {
+      return { ok: false, reason: 'clip-parse-failed: ' + (e?.message || e) };
+    }
+
+    // Count expected vs. effective bindings — Three.js's AnimationMixer
+    // calls `getBinding` and silently drops tracks whose PropertyBinding
+    // can't resolve. We can't intercept those drops, but we can at least
+    // surface the original track count to the caller for UX messages.
+    const mixer = new THREE.AnimationMixer(target);
+    mixer._root = target;
+    const action = mixer.clipAction(clip);
+    if (!action) return { ok: false, reason: 'clipAction-failed' };
+    action.play();
+    this._mixers.push(mixer);
+    this.isAnimationPlaying = true;
+    log(`▶ Applied "${entry.name}" to ${target.name || 'selected'} (${entry.trackCount} tracks)`);
+    return { ok: true, boundTracks: entry.trackCount, totalTracks: entry.trackCount };
   }
 
   // ── Export with baked textures (GLB with embedded textures) ──
@@ -2612,5 +2691,80 @@ export class Studio {
     this.objects.push(cube);
     this.selectObject(cube);
     log('New project');
+  }
+
+  // ── Bundled default models (.glb and glTF-folder assets under assets/models/)
+
+  /**
+   * Return a shallow copy of the bundled default-model catalog so callers
+   * (UI, scripts, console) can enumerate starter assets without mutating
+   * the registry.
+   * @returns {Array<{slug: string, displayName: string, kind: string, url: string,
+   *                  description: string, character: string, tags: string[],
+   *                  fidelity: string}>}
+   */
+  getDefaultModels() {
+    return DEFAULT_MODELS.map(m => ({ ...m }));
+  }
+
+  /**
+   * Load a bundled default model by slug. Replaces the default cube the
+   * studio spawns on boot so a chosen character appears in the scene.
+   *
+   * The slug must match one of the entries in `./defaultModels.js`. The
+   * returned promise resolves to the imported `THREE.Object3D` (a Group
+   * wrapping the model hierarchy), or `null` if the slug is unknown.
+   *
+   * @param {string} slug — e.g. 'simba', 'monk_the_husky',
+   *                       'jack_the_wolf_updated_texture', 'boo', etc.
+   * @returns {Promise<THREE.Object3D|null>}
+   */
+  async loadDefaultModel(slug) {
+    const entry = findDefaultModel(slug);
+    if (!entry) {
+      log(`Unknown default model: ${slug}`, 'error');
+      return null;
+    }
+
+    // Guard against concurrent in-flight loads — the inventory popup's
+    // cards disable their buttons individually but a user can fire many
+    // cards in succession and serialise them here so the default-cube
+    // removal and undo stack stay coherent.
+    if (this._defaultModelLoading) {
+      log('Another default model is already loading — please wait', 'error');
+      return this._defaultModelLoading;
+    }
+
+    this._defaultModelLoading = (async () => {
+      try {
+        // Snapshot undo state BEFORE we remove the cube, so Ctrl+Z can
+        // restore it. Matches the rest of the studio's undo pattern.
+        this.pushUndo();
+
+        // Remove the default cube if it's still on the stage — we replace
+        // it with the picked character so the scene isn't cluttered.
+        if (this._defaultCube && this.objects.includes(this._defaultCube)) {
+          this.scene.remove(this._defaultCube);
+          this.objects = this.objects.filter(o => o !== this._defaultCube);
+          if (this.selectedObject === this._defaultCube) {
+            this.selectObject(null);
+          }
+          this._defaultCube = null;
+        }
+
+        const pkg = await resolveDefaultPackage(slug);
+        // importModel handles both single-URL strings and {url, files, name}
+        const root = await this.importModel(pkg);
+        log(`Loaded default model: ${entry.displayName} (${slug})`);
+        return root;
+      } catch (err) {
+        log(`Failed to load default model ${slug}: ${err.message || err}`, 'error');
+        return null;
+      } finally {
+        this._defaultModelLoading = null;
+      }
+    })();
+
+    return this._defaultModelLoading;
   }
 }

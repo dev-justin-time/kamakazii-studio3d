@@ -366,7 +366,12 @@
     async function initEngine() {
       try {
         const { Studio } = await import('../app/studio.js');
-        window.ProModelerApp = new Studio();
+        const studioInstance = new Studio();
+        window.ProModelerApp = studioInstance;
+        // Register in shared state so feature pages (e.g. inventory) can
+        // look up the studio via state.get('studio') instead of having to
+        // always fall back to window.ProModelerApp.
+        state.set('studio', studioInstance);
         $('statusRight').textContent = 'FPS: 60';
         $('statusLeft').textContent = 'Ready';
       } catch (e) {

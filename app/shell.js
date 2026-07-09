@@ -145,17 +145,17 @@ export class StudioShell {
           { id: 'deform',   label: 'Deform',       icon: '🌊', desc: 'Bend, twist, taper, stretch, lattice deform' },
         ]
       },
-      {
-        category: 'Animation & Rigging',
+      {        category: 'Animation & Rigging',
         items: [
           { id: 'transition', label: 'Transition', icon: '🔄', desc: 'Tween, morph, interpolate objects' },
           { id: 'rig',      label: 'Rig',          icon: '🦴', desc: 'Bones, FK/IK, skinning, weights' },
           { id: 'mocap',    label: 'Mocap',        icon: '🎬', desc: 'Motion capture import & retarget' },
           { id: 'animate',  label: 'Animate',      icon: '⏯️', desc: 'Timeline, keyframes, clips, playback' },
           { id: 'mixer',    label: 'Mixer',        icon: '🎛️', desc: 'Animation mixer — blend clips, cross-fade, layers' },
+          { id: 'motions',  label: 'Motions',      icon: '🗄️', desc: 'Motion database — auto-extract, dedup, reuse animations across models, export/import as JSON' },
           { id: 'constraints', label: 'Constraints', icon: '🔗', desc: 'IK/FK, parent, look-at, path constraints' },
           { id: 'shapes',   label: 'Shape Keys',   icon: '🎭', desc: 'Blend shapes, morph targets, shape key editor' },
-        ]
+        ]      
       },
       {
         category: 'Materials & Textures',
