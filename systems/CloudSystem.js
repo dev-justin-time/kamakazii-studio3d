@@ -238,36 +238,50 @@ export class CloudSystem {
 
         dbg.log(`[CloudSystem] Importing ${asset.name} (${asset.type})...`);
 
-        // 1. Try to load from Puter FS: prefer native 3D file formats (glTF, OBJ, STL, PLY, FBX)
-        //    over JSON parametric data. This is the "real 3D asset" pipeline.
+        // 1. Try to load from Puter FS.
+        //    Path matches AssetBundler.publishToCloud() upload layout:
+        //      CloudAssets/{creatorId}/{assetId}/asset.k3dasset
+        //    Falls back to flatter path for demo/legacy assets.
         if (isPuterAvailable()) {
-            // 1a. Try native 3D model formats first (glTF/GLB/OBJ/STL/PLY/FBX)
-            //     Reads each file once — if it succeeds, the blob is passed directly
-            //     to the import function to avoid double-downloading large models.
+            const creatorId = asset.creatorId || 'anonymous';
+
+            // 1a. Try k3dasset bundle at the canonical cloud path first.
+            const bundlePath = `CloudAssets/${creatorId}/${asset.id}/asset.k3dasset`;
+            try {
+                const raw = await fs.readText(bundlePath);
+                if (raw) {
+                    const assetData = JSON.parse(raw);
+                    if (assetData.format === 'k3dasset') {
+                        dbg.log(`[CloudSystem] Found k3dasset bundle at ${bundlePath}`);
+                        await this._importPuterAsset(asset, assetData);
+                        return asset;
+                    }
+                }
+            } catch (_) { /* Not found at canonical path — try fallbacks */ }
+
+            // 1b. Try legacy flat paths: native 3D formats (glTF/GLB/OBJ/STL/PLY/FBX)
             for (const fmt of SUPPORTED_FORMATS) {
                 const fsPath = `CloudAssets/${asset.id}.${fmt.ext}`;
                 try {
-                    const blob = await fs.read(fsPath); // throws if file doesn't exist
-                    dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(blob.size / 1024).toFixed(1)} KB) at ${fsPath}`);
-                    const imported = await this._importModelAsset(asset, fsPath, fmt.type, blob);
-                    if (imported) return asset;
-                } catch (_) {
-                    // File doesn't exist or can't be read in this format — try next
-                }
+                    const file = await fs.read(fsPath);
+                    if (file && file.size > 0) {
+                        dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(file.size / 1024).toFixed(1)} KB) at ${fsPath}`);
+                        const imported = await this._importModelAsset(asset, fsPath, fmt.type, file);
+                        if (imported) return asset;
+                    }
+                } catch (_) { /* Not found */ }
             }
 
-            // 1b. Fall back to JSON bundle data (parametric geometry)
-            const fsPath = `CloudAssets/${asset.id}.json`;
+            // 1c. Fall back to flat JSON parametric data
+            const legacyJsonPath = `CloudAssets/${asset.id}.json`;
             try {
-                const raw = await fs.readText(fsPath);
+                const raw = await fs.readText(legacyJsonPath);
                 if (raw) {
                     const assetData = JSON.parse(raw);
                     await this._importPuterAsset(asset, assetData);
                     return asset;
                 }
-            } catch (_) {
-                // No FS data — fall through to generator
-            }
+            } catch (_) { /* No FS data — fall through to generator */ }
         }
 
         // 2. Fall back to local procedural generation (original mock behaviour)
@@ -593,8 +607,11 @@ export class CloudSystem {
         mesh.receiveShadow = item.receiveShadow !== false;
 
         if (item.position) mesh.position.fromArray(Array.isArray(item.position) ? item.position : [0, 0, 0]);
+        else if (item.transform?.position) mesh.position.fromArray(Array.isArray(item.transform.position) ? item.transform.position : [0, 0, 0]);
         if (item.rotation) mesh.rotation.fromArray(Array.isArray(item.rotation) ? item.rotation : [0, 0, 0]);
+        else if (item.transform?.rotation) mesh.rotation.fromArray(Array.isArray(item.transform.rotation) ? item.transform.rotation : [0, 0, 0]);
         if (item.scale) mesh.scale.fromArray(Array.isArray(item.scale) ? item.scale : [1, 1, 1]);
+        else if (item.transform?.scale) mesh.scale.fromArray(Array.isArray(item.transform.scale) ? item.transform.scale : [1, 1, 1]);
 
         return mesh;
     }

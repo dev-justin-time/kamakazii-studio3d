@@ -3,6 +3,7 @@
  * Reuses logic from engine.js but without depending on old HTML layout/UIManager.
  * Feature pages interact via window.ProModelerApp.
  */
+import '../shared/studio-globals.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';

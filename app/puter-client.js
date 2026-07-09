@@ -14,9 +14,12 @@
 
 import { dbg } from './dbg.js';
 import { writeStatus } from './status-bar.js';
+import { setCloudStatus, CloudState } from '../../shared/cloud-status.js';
 import puterLib, {
   resolvePuter,
   isPuterAvailable,
+  isCloudDisabled,
+  resetCloudCircuit,
   auth,
   kv,
   fs,
@@ -29,6 +32,8 @@ import puterLib, {
 export {
   resolvePuter,
   isPuterAvailable,
+  isCloudDisabled,
+  resetCloudCircuit,
   auth,
   kv,
   fs,
@@ -71,6 +76,12 @@ export async function initPuter() {
     dbg.warn('[puter-client] Puter SDK not available');
     _puterInitialized = true;
     _puterUser = null;
+    // Paint the status-bar cloud pill so the user sees the cloud is
+    // unavailable (the editor UIManager will also paint its own dot;
+    // this ensures the status bar is correct even if UIManager hasn't
+    // initialised yet). The puter-lib circuit breaker will now throttle
+    // any further Puter calls until the user clicks the pill to recheck.
+    setCloudStatus('statusCloudDot', CloudState.DISCONNECTED, 'Puter not available', 'status-cloud-indicator', '');
     return false;
   }
 

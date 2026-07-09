@@ -313,20 +313,40 @@
         header.textContent = label;
         popupContent.appendChild(header);
 
-        // Build controls
+        // Build controls. Feature pages use one of two patterns:
+        //   1. Custom renderer: `export function render(container, state)` —
+        //      page builds its own DOM (incl. its own action buttons).
+        //      Used by file, inventory, and any other feature that needs a
+        //      richer UI than the declarative meta.controls scheme.
+        //   2. Declarative meta: `export const meta = { controls: [...], onApply }` —
+        //      openPopup renders the controls + a standard OK button.
+        // Custom render is preferred when both are present (richer path).
         const controlsContainer = document.createElement('div');
         popupContent.appendChild(controlsContainer);
-        renderControls(controlsContainer, mod.meta?.controls);
-
-        // OK button
-        const ok = document.createElement('button');
-        ok.className = 'btn';
-        ok.textContent = 'OK ✓';
-        ok.addEventListener('click', () => {
-          mod.meta?.onApply?.(state, window.ProModelerApp);
-          closePopup();
-        });
-        popupContent.appendChild(ok);
+        if (typeof mod.render === 'function') {
+          mod.render(controlsContainer, state);
+        } else if (mod.meta && Array.isArray(mod.meta.controls)) {
+          renderControls(controlsContainer, mod.meta.controls);
+          // OK button (only for the declarative meta path)
+          const ok = document.createElement('button');
+          ok.className = 'btn';
+          ok.textContent = 'OK ✓';
+          ok.addEventListener('click', () => {
+            mod.meta.onApply?.(state, window.ProModelerApp);
+            closePopup();
+          });
+          popupContent.appendChild(ok);
+        } else {
+          // Feature exports neither `render` nor a valid `meta` —
+          // surface that explicitly so it isn't mistaken for the bug we
+          // just fixed (empty popup with no signal).
+          controlsContainer.innerHTML = '<p style="color:#888;padding:12px;font-size:12px;text-align:center">This feature has no UI yet.</p>';
+          const ok = document.createElement('button');
+          ok.className = 'btn';
+          ok.textContent = 'Close';
+          ok.addEventListener('click', closePopup);
+          popupContent.appendChild(ok);
+        }
       } catch (e) {
         popupContent.innerHTML = `<h2>${label}</h2><p style="color:#888;padding:12px">Feature page loading...<br><span style="font-size:11px">${e.message}</span></p>`;
         const ok = document.createElement('button');

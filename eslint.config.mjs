@@ -103,11 +103,17 @@ export default [
         SpeechSynthesisUtterance: 'readonly',
         speechSynthesis: 'readonly',
         // Third-party libraries loaded via <script> tags
-        // (puter.js, nipplejs, websim). These expose globals.
+        // (puter.js, nipplejs, websim + WebsimSocket). These expose globals.
         puter: 'readonly',
         nipplejs: 'readonly',
         websim: 'readonly',
         WebsimSocket: 'readonly',
+        // Studio internals — attached to window by shared/studio-globals.js
+        // (see docs/dbnu.md). NOTE: `log` is a bare name and may be
+        // shadowed by local function-scoped `log` bindings in feature pages.
+        _getApp: 'readonly',
+        _refreshUI: 'readonly',
+        log: 'readonly',
         // Three.js often pulled in alongside the app
         THREE: 'readonly',
         CONFIG: 'readonly',

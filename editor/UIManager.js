@@ -1691,6 +1691,14 @@ export class UIManager {
         const panelDot = document.querySelector('.assets-panel .cloud-status-dot');
         if ((!panelDot && !document.getElementById('statusCloudDot')) || !this.studio.cloudSystem) return;
 
+        // User-initiated recheck: reset the puter-lib circuit breaker so the
+        // next attempt actually hits the network. If the backend is still
+        // down, the breaker will re-open after 3 more failures (30s window).
+        try {
+            const { resetCloudCircuit } = await import('../app/puter-client.js');
+            if (typeof resetCloudCircuit === 'function') resetCloudCircuit();
+        } catch (_) { /* puter-client not available in some build configs */ }
+
         // Set all indicators to checking state
         setCloudStatus(panelDot, CloudState.CHECKING, 'Checking Puter connection...', 'cloud-status-dot', 'cloud-status-');
         setCloudStatus('statusCloudDot', CloudState.CHECKING, 'Checking Puter connection...', 'status-cloud-indicator', '');

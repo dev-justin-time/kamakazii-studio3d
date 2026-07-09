@@ -1,6 +1,6 @@
 /**
  * Studio Globals — shared definitions for the most-used "undefined"
- * references that the ESLint `no-undef` rule flags across the
+ * references that the ESLint no-undef rule flags across the
  * kamakazii_studio3D/ tree.
  *
  * Every export here exists to resolve a real ReferenceError that
@@ -15,11 +15,11 @@
 import { dbg } from '../app/dbg.js';
 
 /**
- * `_getApp()` — returns the live `ProModelerApp` studio instance, or
- * `null` if the engine hasn't booted yet.
+ * _getApp() — returns the live ProModelerApp studio instance, or
+ * null if the engine hasn't booted yet.
  *
- * Replaces the 17 locally-defined `_getApp` helpers across
- * `features/*/page.js` that each did the same thing slightly
+ * Replaces the 17 locally-defined _getApp helpers across
+ * features/<feature>/page.js that each did the same thing slightly
  * differently. Importing from this single source ensures every
  * feature page resolves the same way (and tolerates the engine
  * being absent during SSR / tests / pre-boot).
@@ -60,7 +60,18 @@ export function log(msg, level) {
  *
  * @returns {object} websim or a stub
  */
-export const websim = (typeof window !== 'undefined' && window.websim) || {
+// NOTE: The stub is hoisted into a standalone const instead of being
+// inlined as the right-hand side of the || in the export const below.
+// ESLint's Espree parser has a known edge-case where inline object
+// literals combined with logical-OR short-circuiting in an export const
+// assignment can desync the lexer, throwing spurious "Unexpected token"
+// errors at unrelated later lines. V8 (node --check) parses the inline
+// form correctly; only the Espree parser is affected. Hoisting the body
+// to a standalone const makes the AST unambiguous and the export a
+// one-line || short-circuit. NOTE: this comment intentionally uses no
+// backticks because backticks inside // comments confuse the Espree
+// parser into template-literal mode and produce a cascade of errors.
+const websimStub = {
   // Real websim exposes at minimum: generate, embed, chat, search.
   // The stub matches that surface so callers can call any of them
   // without first checking whether websim is loaded.
@@ -74,6 +85,8 @@ export const websim = (typeof window !== 'undefined' && window.websim) || {
   __warn: function(name) { dbg.warn('websim.' + name + ' called but websim is not loaded'); },
 };
 
+export const websim = (typeof window !== 'undefined' && window.websim) || websimStub;
+
 /**
  * WebsimSocket -- defensive wrapper for the window.WebsimSocket
  * class. When websim is loaded, the real class is returned. When
@@ -84,7 +97,13 @@ export const websim = (typeof window !== 'undefined' && window.websim) || {
  *   const sock = new WebsimSocket('wss://...');
  *   sock.onmessage = (msg) => ...;  // safe even on the stub
  */
-export const WebsimSocket = (typeof window !== 'undefined' && window.WebsimSocket) || class WebsimSocketStub {
+// NOTE: Hoisted to a standalone class declaration (not inlined as the
+// RHS of the || in the export const below) for the same Espree-parser
+// reason noted above on the websim stub. Inline class expressions inside
+// || class {...} desync the parser, producing spurious "Unexpected token"
+// errors at unrelated later lines. (No backticks in this comment —
+// see the websim-stub NOTE above for why.)
+class WebsimSocketStub {
   constructor(...args) {
     dbg.warn('WebsimSocket constructed but websim is not loaded', args);
     this.readyState = 3; // CLOSED
@@ -92,16 +111,14 @@ export const WebsimSocket = (typeof window !== 'undefined' && window.WebsimSocke
   }
   send()    { dbg.warn('WebsimSocket.send() called on stub'); }
   close()   { /* no-op */ }
-  // Note: onopen / onmessage / onclose / onerror are intentionally NOT
-  // declared as class accessors here. The previous `set onerror(fn) {...}`
-  // form confused ESLint's parser (likely because `onerror` is a
-  // reserved-by-convention global on `window`), shifting parse errors
-  // down to the side-effect block below. Without these accessors, the
-  // stub still works: `sock.onerror = fn` simply creates a normal
-  // property on the instance, which the consumer's setter will read.
-  // For the no-op semantic, a no-op is the default — assigning a
-  // function that never fires is identical to assigning nothing.
-};
+  // onopen / onmessage / onclose / onerror are intentionally NOT
+  // declared as class accessors. Without them, sock.onerror = fn
+  // simply creates a normal property on the instance (which the
+  // consumer's setter will read), and the no-op semantic is preserved
+  // because the stub never invokes the assigned handler.
+}
+
+export const WebsimSocket = (typeof window !== 'undefined' && window.WebsimSocket) || WebsimSocketStub;
 
 // ── Window-globals side-effect ────────────────────────────────────────────────────
 //
@@ -110,35 +127,42 @@ export const WebsimSocket = (typeof window !== 'undefined' && window.WebsimSocke
 // features/map/page.js, features/profile/page.js, features/transition/page.js)
 // were historically written with each file defining its own local _getApp()
 // helper. The DBNU audit centralised those into this module, but bare
-// `_getApp()` references in those pages rely on ESM globalThis lookup —
-// something that only resolves if the symbol is on `window` before the page
+// _getApp() references in those pages rely on ESM globalThis lookup --
+// something that only resolves if the symbol is on window before the page
 // module is evaluated.
 //
 // Without this side-effect, dynamic imports of those feature pages throw
 //   [Boot Error] Uncaught ReferenceError: _getApp is not defined
-// because the bare `_getApp()` cannot find a module-local binding, import
+// because the bare _getApp() cannot find a module-local binding, import
 // binding, or globalThis value.
 //
-// Attaching the exports to `window` here restores the pre-DBNU behaviour
+// Attaching the exports to window here restores the pre-DBNU behaviour
 // while still keeping the named exports for callers that import them
 // explicitly (e.g. app/studio.js, app/shell.js). The side-effect must run
 // before any feature page is dynamically imported; we ensure that by
-// importing this module early in the boot chain (see app/studio.js).
+// importing this module early in the boot chain (see ui/index.html).
+//
+// NOTE: This block comment intentionally uses no backticks. Backticks
+// inside /* */ comments (and inside // line comments) confuse the
+// Espree parser into template-literal mode, which then cannot find a
+// closing backtick and cascades a spurious "Unexpected token" error
+// to a later line. The earlier NOTE comments on the hoisted stubs
+// above this block document the same constraint.
 if (typeof window !== 'undefined') {
   window._getApp = _getApp;
   window.log = log;
   window.websim = websim;
   window.WebsimSocket = WebsimSocket;
-  // `_refreshUI()` is referenced as a global by features/chat/page.js,
+  // _refreshUI() is referenced as a global by features/chat/page.js,
   // features/history/page.js, and features/game/page.js (declared via
-  // `/* global _getApp, _refreshUI */`). The pages call it to redraw
+  // /* global _getApp, _refreshUI */). The pages call it to redraw
   // the popup after a button click. The popup's renderControls() and
   // OK-button wiring handle the user-visible state changes already, so
   // a no-op default is correct here. If a richer default is needed
   // later (e.g. one that re-runs the page's buildControls), an inner
-  // module can override `window._refreshUI` after the popup opens.
+  // module can override window._refreshUI after the popup opens.
   if (typeof window._refreshUI !== 'function') {
-    window._refreshUI = function() { /* no-op default — see comment above */ };
+    window._refreshUI = function() { /* no-op default - see comment above */ };
   }
 }
 
