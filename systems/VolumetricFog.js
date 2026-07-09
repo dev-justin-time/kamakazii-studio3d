@@ -97,7 +97,7 @@ const FRAGMENT_SHADER = `
   //     Returns a value in [0, 1] where 1 = fully visible sun.
   float sunVisibilityAt(vec3 pos) {
     // The sun is far away, so we approximate the optical depth
-    // between `pos` and the edge of the atmosphere as proportional
+    // between 'pos' and the edge of the atmosphere as proportional
     // to the local density scaled by the secant of the sun's zenith angle.
     float height = max(pos.y, 0.0);
     float localDensity = exp(-height * heightFalloff);

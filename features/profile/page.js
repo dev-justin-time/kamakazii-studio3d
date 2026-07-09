@@ -1,10 +1,47 @@
+/* global _getApp, THREE, log, _refreshUI */
+
 /**
  * Profile — User preferences, display options, editor settings
+ * 
+ * Manages and persists user preferences (theme, grid, gizmo, performance) 
+ * using localStorage and applies them dynamically to the editor state.
  */
 import { renderControls } from '../_shared/renderControls.js';
 
-const meta = {
-  controls: [
+/**
+ * Builds the controls array dynamically based on the current application state.
+ * Reads current preferences to set the correct default values in the UI.
+ * 
+ * @param {Object} state - The current application state.
+ * @returns {Array} An array of control definitions for renderControls.
+ */
+function buildControls(state = {}) {
+  const app = _getApp();
+  const prefs = state.preferences || app?.preferences || {};
+  
+  // Read current state with fallbacks to ensure UI reflects actual app state
+  const currentTheme = prefs.theme || 'dark';
+  const currentBgColor = prefs.bgColor || '#1a1a1a';
+  const showGrid = prefs.showGrid !== false;
+  const gridSnap = prefs.gridSnap !== false;
+  const gizmoSize = prefs.gizmoSize || 1;
+  const gizmoLocal = prefs.gizmoLocal === true;
+  const shadowsEnabled = prefs.shadowsEnabled !== false;
+
+  // Helper to update a preference, persist it to localStorage, and apply it
+  const updatePref = (key, value, applyFn) => {
+    if (app) {
+      app.preferences = app.preferences || {};
+      app.preferences[key] = value;
+      try { 
+        localStorage.setItem('proModeler_prefs', JSON.stringify(app.preferences)); 
+      } catch (_e) { /* ignore storage errors (e.g., private browsing) */ }
+    }
+    if (applyFn) applyFn(value);
+    if (typeof _refreshUI === 'function') _refreshUI();
+  };
+
+  return [
     { key: 'info', type: 'label', label: 'Editor preferences and display settings:' },
     { key: 'sep0', label: '──────────', type: 'label' },
 
@@ -14,7 +51,7 @@ const meta = {
       key: 'theme',
       label: 'Theme',
       type: 'select',
-      default: 'dark',
+      default: currentTheme,
       options: [
         { value: 'dark', label: 'Dark (default)' },
         { value: 'darker', label: 'Darker' },
@@ -22,22 +59,31 @@ const meta = {
       ],
       description: 'Editor color scheme',
       onChange: (val) => {
-        const themes = { dark: '#1a1a1a', darker: '#0a0a0a', blueprint: '#0d1b2a' };
-        document.body.style.background = themes[val] || '#111';
-        if (_getApp()?.scene) {
-          const bg = { dark: 0x1a1a1a, darker: 0x0a0a0a, blueprint: 0x0d1b2a };
-          _getApp().scene.background = new THREE.Color(bg[val] || 0x1a1a1a);
-          _getApp().render();
-        }
+        updatePref('theme', val, (v) => {
+          const themes = { dark: '#1a1a1a', darker: '#0a0a0a', blueprint: '#0d1b2a' };
+          document.body.style.background = themes[v] || '#111';
+          if (app?.scene) {
+            const bg = { dark: 0x1a1a1a, darker: 0x0a0a0a, blueprint: 0x0d1b2a };
+            app.scene.background = new THREE.Color(bg[v] || 0x1a1a1a);
+            if (typeof app.render === 'function') app.render();
+          }
+        });
       },
     },
     {
       key: 'bg-color',
       label: 'Background Color',
       type: 'color',
-      default: '#1a1a1a',
+      default: currentBgColor,
       description: 'Custom scene background color (overrides theme)',
-      onChange: (val) => { _getApp()?.setBackgroundColor(val); },
+      onChange: (val) => { 
+        updatePref('bgColor', val, (v) => {
+          if (app?.scene) {
+            app.scene.background = new THREE.Color(v);
+            if (typeof app.render === 'function') app.render();
+          }
+        }); 
+      },
     },
     { key: 'sep1', label: '──────────', type: 'label' },
 
@@ -47,24 +93,29 @@ const meta = {
       key: 'grid-toggle',
       label: 'Show Grid',
       type: 'toggle',
-      default: true,
+      default: showGrid,
       onChange: (val) => {
-        const app = _getApp();
-        if (app?.scene) {
-          app.scene.children.forEach(c => {
-            if (c.isGridHelper) c.visible = val;
-          });
-          app.render();
-        }
+        updatePref('showGrid', val, (v) => {
+          if (app?.scene) {
+            app.scene.children.forEach(c => {
+              if (c.isGridHelper) c.visible = v;
+            });
+            if (typeof app.render === 'function') app.render();
+          }
+        });
       },
     },
     {
       key: 'grid-snap',
       label: 'Grid Snap',
       type: 'toggle',
-      default: true,
+      default: gridSnap,
       description: 'Snap to grid when using Move tool',
-      onChange: (val) => { _getApp()?.setGridSnapEnabled(val); },
+      onChange: (val) => { 
+        updatePref('gridSnap', val, (v) => {
+          if (typeof app?.setGridSnapEnabled === 'function') app.setGridSnapEnabled(v); 
+        }); 
+      },
     },
     { key: 'sep2', label: '──────────', type: 'label' },
 
@@ -74,21 +125,27 @@ const meta = {
       key: 'gizmo-size',
       label: 'Gizmo Size',
       type: 'slider',
-      min: 0.5, max: 3, step: 0.1, default: 1,
+      min: 0.5, max: 3, step: 0.1,
+      default: gizmoSize,
       description: 'Size of the transform controls (move/rotate/scale)',
-      onChange: (val) => { _getApp()?.setGizmoSize(val); },
+      onChange: (val) => { 
+        updatePref('gizmoSize', val, (v) => {
+          if (typeof app?.setGizmoSize === 'function') app.setGizmoSize(v); 
+        }); 
+      },
     },
     {
       key: 'gizmo-local',
       label: 'Use Local Space',
       type: 'toggle',
-      default: false,
+      default: gizmoLocal,
       description: 'Transform in local object space instead of world space',
       onChange: (val) => {
-        const app = _getApp();
-        if (app?.transformControls) {
-          app.transformControls.setSpace(val ? 'local' : 'world');
-        }
+        updatePref('gizmoLocal', val, (v) => {
+          if (app?.transformControls) {
+            app.transformControls.setSpace(v ? 'local' : 'world');
+          }
+        });
       },
     },
     { key: 'sep3', label: '──────────', type: 'label' },
@@ -99,14 +156,15 @@ const meta = {
       key: 'shadow-toggle',
       label: 'Shadows Enabled',
       type: 'toggle',
-      default: true,
+      default: shadowsEnabled,
       description: 'Toggle shadow rendering (disable for better performance)',
       onChange: (val) => {
-        const app = _getApp();
-        if (app?.renderer) {
-          app.renderer.shadowMap.enabled = val;
-          app.render();
-        }
+        updatePref('shadowsEnabled', val, (v) => {
+          if (app?.renderer) {
+            app.renderer.shadowMap.enabled = v;
+            if (typeof app.render === 'function') app.render();
+          }
+        });
       },
     },
     { key: 'sep4', label: '──────────', type: 'label' },
@@ -117,7 +175,7 @@ const meta = {
       key: 'about',
       type: 'label',
       label: `ProModeler Studio v${(() => {
-        try { return '1.2.0'; } catch(e) { return 'dev'; }
+        try { return '1.2.0'; } catch (_e) { return 'dev'; }
       })()}`,
     },
     {
@@ -125,24 +183,51 @@ const meta = {
       label: '↺ Reset to Defaults',
       type: 'button',
       onClick: () => {
-        const app = _getApp();
         if (!app) return;
-        // Reset various settings
-        app.scene.background = new THREE.Color(0x1a1a1a);
-        app.setGridSnapEnabled(true);
-        app.setGizmoSize(1);
-        app.renderer.shadowMap.enabled = true;
-        app.transformControls.setSpace('world');
+        
+        // Clear persisted preferences
+        app.preferences = {};
+        try { localStorage.removeItem('proModeler_prefs'); } catch (_e) {}
+        
+        // Apply default settings
+        if (app.scene) {
+          app.scene.background = new THREE.Color(0x1a1a1a);
+          app.scene.children.forEach(c => { if (c.isGridHelper) c.visible = true; });
+        }
+        if (typeof app.setGridSnapEnabled === 'function') app.setGridSnapEnabled(true);
+        if (typeof app.setGizmoSize === 'function') app.setGizmoSize(1);
+        if (app.renderer) app.renderer.shadowMap.enabled = true;
+        if (app.transformControls) app.transformControls.setSpace('world');
+        
         document.body.style.background = '#1a1a1a';
-        app.render();
+        
+        if (typeof app.render === 'function') app.render();
         log('Preferences reset to defaults');
+        
+        // Refresh UI to reflect reset defaults
+        if (typeof _refreshUI === 'function') _refreshUI();
       },
     },
-  ],
+  ];
+}
+
+// Export meta for backward compatibility or external inspection
+const meta = {
+  controls: buildControls(),
   onApply: () => {},
 };
 
-export { meta };
+/**
+ * Renders the Profile UI panel.
+ * Uses the state parameter to read current preferences and reflect them in the UI.
+ * 
+ * @param {HTMLElement} container - The DOM element to render the controls into.
+ * @param {Object} state - The current application state.
+ */
 export function render(container, state) {
-  renderControls(container, meta.controls);
+  // Generate fresh controls based on the current state to ensure UI is up-to-date
+  const currentControls = buildControls(state);
+  renderControls(container, currentControls);
 }
+
+export { meta };

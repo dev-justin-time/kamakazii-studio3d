@@ -22,6 +22,7 @@ import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';
 import { DEFAULT_MODELS, findDefaultModel, resolveDefaultPackage } from './defaultModels.js';
 import { writeStatus } from './status-bar.js';
+import { dbg } from './dbg.js';
 
 // ── Log helper ──
 const log = (msg) => {
@@ -1743,7 +1744,6 @@ export class Studio {
     // but the flag is here so future private assets can disable).
     if (!this._motionExtractionDisabled) {
       import('../editor/motionStorage.js').then(({ extractAndSaveMotions }) => {
-import { dbg } from './dbg.js';
         extractAndSaveMotions(clips, root?.name || 'imported', root?.name || '').then(({ added, skipped }) => {
           if (added > 0) log(`💾 Extracted ${added} new motion(s) to motion database (${skipped} duplicate skipped)`);
         });
@@ -2686,7 +2686,7 @@ import { dbg } from './dbg.js';
    *   around the origin so multiple picks do not overlap.
    *   Empty list (default) keeps the legacy behaviour: spawn the default cube.
    */
-  newProject(opts = {}) {
+  async newProject(opts = {}) {
     this.pushUndo();
     this.objects.forEach(o => this.scene.remove(o));
     this.objects = [];

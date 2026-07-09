@@ -5,7 +5,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { dbg } from '../app/dbg.js';
 
 /* Basic scene + renderer */
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('c');                     
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setClearColor(0xffffff, 1);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -85,7 +85,8 @@ function refreshHierarchy() {
     li.textContent = o.userData.type || 'object';
     li.dataset.index = i;
     if (o === selected) li.style.background = '#eef6ff';
-    li.addEventListener('click', (e) => {
+    // FIX: Removed unused 'e' parameter
+    li.addEventListener('click', () => {
       selectObject(o);
     });
     ul.appendChild(li);
@@ -173,16 +174,17 @@ function updateAnchorUIFor(obj) {
 
 /* Prop input handlers */
 function wirePropInputs() {
-  ['pos-x','pos-y','pos-z'].forEach((id, idx) => {
-    document.getElementById(id).addEventListener('change', (e) => {
+  // FIX: Removed unused 'idx' and 'e' parameters
+  ['pos-x','pos-y','pos-z'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', () => {
       if (!selected) return;
       selected.position.setX(parseFloat(document.getElementById('pos-x').value));
       selected.position.setY(parseFloat(document.getElementById('pos-y').value));
       selected.position.setZ(parseFloat(document.getElementById('pos-z').value));
     });
   });
-  ['rot-x','rot-y','rot-z'].forEach((id, idx) => {
-    document.getElementById(id).addEventListener('change', (e) => {
+  ['rot-x','rot-y','rot-z'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', () => {
       if (!selected) return;
       selected.rotation.set(
         THREE.MathUtils.degToRad(parseFloat(document.getElementById('rot-x').value)),
@@ -191,8 +193,8 @@ function wirePropInputs() {
       );
     });
   });
-  ['scl-x','scl-y','scl-z'].forEach((id, idx) => {
-    document.getElementById(id).addEventListener('change', (e) => {
+  ['scl-x','scl-y','scl-z'].forEach((id) => {
+    document.getElementById(id).addEventListener('change', () => {
       if (!selected) return;
       selected.scale.set(
         parseFloat(document.getElementById('scl-x').value),
@@ -670,11 +672,12 @@ function animate(time) {
     const now = time;
     objects.forEach(o => {
       if (!o.userData._scriptFns) return;
-      const ctx = { scene, player, self: o, time: now, THREE };
+      // FIX: Removed unused 'ctx' variable
       o.userData._scriptFns.forEach(fn => {
         try {
           if (fn.type === 'lua' && window.fengari && window.fengari.lua && window.fengari.to_luastring && window.fengari.to_jsstring) {
-            const { lua, lauxlib, to_luastring, to_jsstring, interop } = window.fengari;
+            // FIX: Removed unused 'lauxlib' and 'interop' from destructuring
+            const { lua, to_luastring, to_jsstring } = window.fengari;
             const L = fn.state;
             // create a simple ctx table in Lua
             lua.lua_newtable(L); // push ctx table
@@ -727,7 +730,8 @@ function animate(time) {
           } else {
             // non-lua or missing fengari: do nothing
           }
-        } catch (err) { /* don't spam console */ }
+        // FIX: Renamed 'err' to '_err' to satisfy /^_/u rule for ignored errors
+        } catch (_err) { /* don't spam console */ }
       });
     });
   }

@@ -1,13 +1,42 @@
+/* global _getApp, _refreshUI */
+
 /**
  * Game Tools — Scene stats, LOD generation, collider helpers, optimization, export
+ * 
+ * Note: This module assumes `_getApp()` and `_refreshUI()` are available as global 
+ * functions in your application scope.
  */
 import { renderControls } from '../_shared/renderControls.js';
 
-const meta = {
-  controls: [
+// Define export formats to avoid repetitive code
+const EXPORT_FORMATS = [
+  { format: 'glb',  label: 'Export Selected as GLB' },
+  { format: 'gltf', label: 'Export Selected as GLTF' },
+  { format: 'obj',  label: 'Export Selected as OBJ' },
+  { format: 'stl',  label: 'Export Selected as STL' },
+];
+
+/**
+ * Builds the controls array dynamically based on the current application state.
+ * This allows UI elements (like labels and toggle buttons) to reflect real-time data.
+ * 
+ * @param {Object} state - The current state of the application.
+ * @returns {Array} An array of control definitions for renderControls.
+ */
+function buildControls(state = {}) {
+  const { selectedObject, collidersVisible = true } = state;
+
+  // Dynamic labels based on state
+  const statsLabel = selectedObject 
+    ? `Selected: ${selectedObject.name || 'Object'}\nVertices: ${selectedObject.vertices || 0}\nFaces: ${selectedObject.faces || 0}`
+    : 'Select an object to see stats';
+  
+  const colliderToggleLabel = collidersVisible ? '🟢 Colliders ON' : '🔴 Colliders OFF';
+
+  return [
     // ── Scene Stats ──
     { key: 'info-stats', type: 'label', label: 'Scene Statistics:' },
-    { key: 'scene-stats', type: 'label', label: 'Select an object to see stats' },
+    { key: 'scene-stats', type: 'label', label: statsLabel },
     {
       key: 'refresh-stats',
       label: '🔄 Refresh Stats',
@@ -16,34 +45,25 @@ const meta = {
     },
     { key: 'sep0', label: '──────────', type: 'label' },
 
-    // ── LOD ──
-    { key: 'info-lod', type: 'label', label: 'LOD Generation:' },
+    // ── LOD & Hierarchy ──
+    { key: 'info-lod', type: 'label', label: 'LOD & Hierarchy:' },
     {
       key: 'gen-lod',
       label: '📉 Generate LOD (simplified)',
       type: 'button',
-      onClick: () => {
-        _getApp()?.generateLOD();
-        _refreshUI();
-      },
+      onClick: () => { _getApp()?.generateLOD(); _refreshUI(); },
     },
     {
       key: 'group-objects',
       label: '🔗 Group Others Under Selected',
       type: 'button',
-      onClick: () => {
-        _getApp()?.groupSelected();
-        _refreshUI();
-      },
+      onClick: () => { _getApp()?.groupSelected(); _refreshUI(); },
     },
     {
       key: 'ungroup-objects',
       label: '🔓 Ungroup Children to Scene',
       type: 'button',
-      onClick: () => {
-        _getApp()?.ungroupSelected();
-        _refreshUI();
-      },
+      onClick: () => { _getApp()?.ungroupSelected(); _refreshUI(); },
     },
     { key: 'sep1', label: '──────────', type: 'label' },
 
@@ -53,31 +73,30 @@ const meta = {
       key: 'collider-box',
       label: '📦 Add Box Collider',
       type: 'button',
-      onClick: () => { _getApp()?.addColliderHelper('box'); },
+      onClick: () => { _getApp()?.addColliderHelper('box'); _refreshUI(); },
     },
     {
       key: 'collider-sphere',
       label: '⚪ Add Sphere Collider',
       type: 'button',
-      onClick: () => { _getApp()?.addColliderHelper('sphere'); },
+      onClick: () => { _getApp()?.addColliderHelper('sphere'); _refreshUI(); },
     },
     {
       key: 'colliders-toggle',
-      label: '🟢 Colliders ON',
+      label: colliderToggleLabel,
       type: 'button',
-      onClick: () => {
-        _getApp()?.toggleColliderHelpers();
-        _refreshUI();
-      },
+      onClick: () => { _getApp()?.toggleColliderHelpers(); _refreshUI(); },
     },
     { key: 'sep2', label: '──────────', type: 'label' },
 
     // ── Export ──
     { key: 'info-export', type: 'label', label: 'Export (selected or whole scene):' },
-    { key: 'export-glb',  label: 'Export Selected as GLB',  type: 'button', onClick: () => _getApp()?.exportModel('glb') },
-    { key: 'export-gltf', label: 'Export Selected as GLTF', type: 'button', onClick: () => _getApp()?.exportModel('gltf') },
-    { key: 'export-obj',  label: 'Export Selected as OBJ',  type: 'button', onClick: () => _getApp()?.exportModel('obj') },
-    { key: 'export-stl',  label: 'Export Selected as STL',  type: 'button', onClick: () => _getApp()?.exportModel('stl') },
+    ...EXPORT_FORMATS.map(({ format, label }) => ({
+      key: `export-${format}`,
+      label,
+      type: 'button',
+      onClick: () => _getApp()?.exportModel(format),
+    })),
     { key: 'sep3', label: '──────────', type: 'label' },
 
     // ── Utilities ──
@@ -89,11 +108,25 @@ const meta = {
     { key: 'info-tip2', type: 'label', label: '  • LOD = Level of Detail. Creates a simplified copy with fewer polygons.' },
     { key: 'info-tip3', type: 'label', label: '  • Colliders show bounding volumes for physics/collision detection.' },
     { key: 'info-tip4', type: 'label', label: '  • Group/ungroup organizes objects in the scene hierarchy.' },
-  ],
+  ];
+}
+
+// Export meta for backward compatibility or external inspection
+const meta = {
+  controls: buildControls(), // Default state
   onApply: () => {},
 };
 
-export { meta };
+/**
+ * Renders the Game Tools UI panel.
+ * 
+ * @param {HTMLElement} container - The DOM element to render the controls into.
+ * @param {Object} state - The current application state (used for dynamic UI updates).
+ */
 export function render(container, state) {
-  renderControls(container, meta.controls);
+  // Generate fresh controls based on the current state to ensure UI is up-to-date
+  const currentControls = buildControls(state);
+  renderControls(container, currentControls);
 }
+
+export { meta };

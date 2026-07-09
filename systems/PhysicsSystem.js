@@ -52,7 +52,7 @@ export class PhysicsSystem {
 
     if (!this.studio || !this.studio.scene) {
       this._inited = false;
-      setTimeout(() => { try { this.init(); } catch(e) { dbg.warn('PhysicsSystem retry failed', e); } }, 500);
+      setTimeout(() => { try { this.init(); } catch(_e) { dbg.warn('PhysicsSystem retry failed', _e); } }, 500);
       dbg.warn('PhysicsSystem: studio.scene not ready, retrying init shortly.');
       return;
     }
@@ -74,7 +74,7 @@ export class PhysicsSystem {
     if (!this.CANNON) {
       this._initShim();
       if (window?.ProModelerShims?.PhysicsPlaceholder) {
-        try { window.ProModelerShims.PhysicsPlaceholder.init(); } catch(e) {}
+        try { window.ProModelerShims.PhysicsPlaceholder.init(); } catch(_e) {}
       }
     }
 
@@ -196,7 +196,7 @@ export class PhysicsSystem {
       this.world.gravity.set(0, -9.82, 0);
 
       if (this.CANNON.SAPBroadphase) {
-        try { this.world.broadphase = new this.CANNON.SAPBroadphase(this.world); } catch(e) {}
+        try { this.world.broadphase = new this.CANNON.SAPBroadphase(this.world); } catch(_e) {}
       }
       if (this.world.solver) this.world.solver.iterations = 10;
 
@@ -216,14 +216,14 @@ export class PhysicsSystem {
           this.fluidMaterial, this.defaultMaterial,
           { friction: 0.1, restitution: 0.15 }
         ));
-      } catch(e) {}
+      } catch(_e) {}
 
       if (this.world.addEventListener) {
         this.world.addEventListener('beginContact', (e) => this._onBeginContact(e));
         this.world.addEventListener('endContact', (e) => this._onEndContact(e));
       }
-    } catch(e) {
-      dbg.warn('PhysicsSystem._initWorld error:', e);
+    } catch(_e) {
+      dbg.warn('PhysicsSystem._initWorld error:', _e);
     }
   }
 
@@ -237,7 +237,7 @@ export class PhysicsSystem {
     }
     if (this.enabled && !was) {
       if (this.meshes.length === 0 && this.cloths.length === 0) {
-        try { this.syncScene(); } catch(e) { dbg.warn('PhysicsSystem.syncScene failed on enable', e); }
+        try { this.syncScene(); } catch(_e) { dbg.warn('PhysicsSystem.syncScene failed on enable', _e); }
       }
     }
     dbg.log(`Physics simulation ${this.enabled ? 'enabled' : 'disabled'}`);
@@ -249,7 +249,7 @@ export class PhysicsSystem {
     if (!this.world) return;
     this.meshes.forEach(item => {
       if (item?.body && this.world.removeBody) {
-        try { this.world.removeBody(item.body); } catch(e) {}
+        try { this.world.removeBody(item.body); } catch(_e) {}
       }
     });
     this.meshes = [];
@@ -269,7 +269,7 @@ export class PhysicsSystem {
         }
         this.world.addBody(groundBody);
       }
-    } catch(e) {}
+    } catch(_e) {}
 
     // Convert scene meshes to rigid bodies
     (this.studio.objects || []).forEach(obj => {
@@ -285,7 +285,7 @@ export class PhysicsSystem {
     if (!mesh?.geometry || !this.world) return null;
 
     const geometry = mesh.geometry;
-    try { geometry.computeBoundingBox?.(); } catch(e) {}
+    try { geometry.computeBoundingBox?.(); } catch(_e) {}
     const size = geometry.boundingBox?.getSize(new THREE.Vector3()) ?? new THREE.Vector3(1, 1, 1);
 
     let shape = null;
@@ -298,7 +298,7 @@ export class PhysicsSystem {
       } else if (this.CANNON.Box && this.CANNON.Vec3) {
         shape = new this.CANNON.Box(new this.CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
       }
-    } catch(e) { shape = null; }
+    } catch(_e) { shape = null; }
 
     if (!shape) return null;
 
@@ -326,8 +326,8 @@ export class PhysicsSystem {
       this.meshes.push({ mesh, body });
       this._bodyMeshMap.set(body, mesh);
       return body;
-    } catch(e) {
-      dbg.warn('PhysicsSystem.addBody failed:', e);
+    } catch(_e) {
+      dbg.warn('PhysicsSystem.addBody failed:', _e);
       return null;
     }
   }
@@ -336,7 +336,7 @@ export class PhysicsSystem {
     const idx = this.meshes.findIndex(m => m.mesh === mesh);
     if (idx < 0) return;
     const item = this.meshes[idx];
-    try { this.world?.removeBody(item.body); } catch(e) {}
+    try { this.world?.removeBody(item.body); } catch(_e) {}
     this._bodyMeshMap.delete(item.body);
     this.meshes.splice(idx, 1);
   }
@@ -375,8 +375,8 @@ export class PhysicsSystem {
       this.meshes.push({ mesh, body });
       this._bodyMeshMap.set(body, mesh);
       return body;
-    } catch(e) {
-      dbg.warn('addTrimesh failed:', e);
+    } catch(_e) {
+      dbg.warn('addTrimesh failed:', _e);
       return null;
     }
   }
@@ -397,8 +397,8 @@ export class PhysicsSystem {
       if (position) body.position.set(position.x, position.y, position.z);
       this.world.addBody(body);
       return body;
-    } catch(e) {
-      dbg.warn('addHeightfield failed:', e);
+    } catch(_e) {
+      dbg.warn('addHeightfield failed:', _e);
       return null;
     }
   }
@@ -446,8 +446,8 @@ export class PhysicsSystem {
         if (type !== 'spring') this.world.addConstraint(constraint);
         this.constraints.push({ constraint, bodyA, bodyB, type });
       }
-    } catch(e) {
-      dbg.warn(`createConstraint(${type}) failed:`, e);
+    } catch(_e) {
+      dbg.warn(`createConstraint(${type}) failed:`, _e);
     }
     return constraint;
   }
@@ -455,7 +455,7 @@ export class PhysicsSystem {
   removeConstraint(constraint) {
     const idx = this.constraints.findIndex(c => c.constraint === constraint);
     if (idx < 0) return;
-    try { this.world?.removeConstraint(constraint); } catch(e) {}
+    try { this.world?.removeConstraint(constraint); } catch(_e) {}
     this.constraints.splice(idx, 1);
   }
 
@@ -593,7 +593,7 @@ export class PhysicsSystem {
         const dist = Math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2 + (p1.z - p2.z) ** 2);
         try {
           springs.push(new this.CANNON.Spring(particles[idx1], particles[idx2], { restLength: dist, stiffness, damping }));
-        } catch(e) {}
+        } catch(_e) {}
       };
 
       // Structural springs
@@ -630,8 +630,8 @@ export class PhysicsSystem {
       this.cloths.push({ mesh, particles, springs, cols, rows });
       dbg.log(`Cloth created: ${width}x${height}, ${segments} segs, ${springs.length} springs`);
       return mesh;
-    } catch(e) {
-      dbg.error('createCloth failed:', e);
+    } catch(_e) {
+      dbg.error('createCloth failed:', _e);
       return null;
     }
   }
@@ -746,7 +746,7 @@ export class PhysicsSystem {
         this.studio.scene.add(mesh);
         this.meshes.push({ mesh, body });
         this._fluidBodies.push({ mesh, body });
-      } catch(e) {
+      } catch(_e) {
         this.studio.scene.add(mesh);
       }
     }
@@ -777,8 +777,8 @@ export class PhysicsSystem {
       this.triggers.push(trigger);
       this._bodyMeshMap.set(body, mesh);
       return trigger;
-    } catch(e) {
-      dbg.warn('addTrigger failed:', e);
+    } catch(_e) {
+      dbg.warn('addTrigger failed:', _e);
       return null;
     }
   }
@@ -791,13 +791,13 @@ export class PhysicsSystem {
       const other = event.bodyA === trigger.body ? event.bodyB : event.bodyB === trigger.body ? event.bodyA : null;
       if (other && !trigger.inside.has(other)) {
         trigger.inside.add(other);
-        try { trigger.onEnter?.(other, this._bodyMeshMap.get(other)); } catch(e) {}
+        try { trigger.onEnter?.(other, this._bodyMeshMap.get(other)); } catch(_e) {}
       }
     }
     for (const cb of this._contactCallbacks) {
       if ((event.bodyA === cb.bodyA && event.bodyB === cb.bodyB) ||
           (event.bodyA === cb.bodyB && event.bodyB === cb.bodyA)) {
-        try { cb.onContact(event); } catch(e) {}
+        try { cb.onContact(event); } catch(_e) {}
       }
     }
   }
@@ -808,7 +808,7 @@ export class PhysicsSystem {
       const other = event.bodyA === trigger.body ? event.bodyB : event.bodyB === trigger.body ? event.bodyA : null;
       if (other && trigger.inside.has(other)) {
         trigger.inside.delete(other);
-        try { trigger.onExit?.(other, this._bodyMeshMap.get(other)); } catch(e) {}
+        try { trigger.onExit?.(other, this._bodyMeshMap.get(other)); } catch(_e) {}
       }
     }
   }
@@ -897,20 +897,20 @@ export class PhysicsSystem {
       this._syncVehicles();
 
       if (this._debugEnabled) this._updateDebug();
-    } catch(e) {
-      dbg.warn('Physics update failed:', e);
+    } catch(_e) {
+      dbg.warn('Physics update failed:', _e);
     }
   }
 
   _applySpringForces() {
     for (const cloth of this.cloths) {
       for (const spring of cloth.springs) {
-        try { spring.applyForce?.(); } catch(e) {}
+        try { spring.applyForce?.(); } catch(_e) {}
       }
     }
     for (const sb of this.softBodies) {
       for (const spring of sb.springs) {
-        try { spring.applyForce?.(); } catch(e) {}
+        try { spring.applyForce?.(); } catch(_e) {}
       }
     }
   }
@@ -929,7 +929,7 @@ export class PhysicsSystem {
         if (item.body.quaternion && item.mesh.quaternion?.copy) {
           item.mesh.quaternion.copy(item.body.quaternion);
         }
-      } catch(e) {}
+      } catch(_e) {}
     }
   }
 
@@ -947,7 +947,7 @@ export class PhysicsSystem {
         }
         cloth.mesh.geometry.attributes.position.needsUpdate = true;
         cloth.mesh.geometry.computeVertexNormals();
-      } catch(e) {}
+      } catch(_e) {}
     }
   }
 
@@ -968,7 +968,7 @@ export class PhysicsSystem {
           if (t) { wm.position.copy(t.position); wm.quaternion.copy(t.quaternion); }
           wm.rotation.x += wi.rotation ?? 0;
         }
-      } catch(e) {}
+      } catch(_e) {}
     }
   }
 
@@ -977,20 +977,20 @@ export class PhysicsSystem {
   dispose() {
     this.enabled = false;
     for (const { body } of this.meshes) {
-      try { this.world?.removeBody(body); } catch(e) {}
+      try { this.world?.removeBody(body); } catch(_e) {}
     }
     this.meshes = [];
     for (const entry of this.vehicles) {
-      try { entry.vehicle.removeFromWorld?.(); } catch(e) {}
+      try { entry.vehicle.removeFromWorld?.(); } catch(_e) {}
     }
     this.vehicles = [];
     for (const c of this.constraints) {
-      try { this.world?.removeConstraint(c.constraint); } catch(e) {}
+      try { this.world?.removeConstraint(c.constraint); } catch(_e) {}
     }
     this.constraints = [];
     this.setDebug(false);
     for (const t of this.triggers) {
-      try { this.world?.removeBody(t.body); } catch(e) {}
+      try { this.world?.removeBody(t.body); } catch(_e) {}
     }
     this.triggers = [];
     this._bodyMeshMap.clear();

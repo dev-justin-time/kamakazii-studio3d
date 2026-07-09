@@ -10,6 +10,8 @@
  * - Plugin store integration (list, search, install from marketplace)
  */
 
+import { dbg } from '../app/dbg.js';
+
 export class PluginRegistry {
   constructor(editorState) {
     this.editor = editorState;
@@ -126,8 +128,8 @@ export class PluginRegistry {
               data.action === 'add-fluid') {
             // Forward to the Physics Pro module
             import('./plugins/PhysicsPro.js').then(({ executePhysicsPro }) => {
-import { dbg } from '../app/dbg.js';
               if (data.action === 'physics-pro') executePhysicsPro(editor);
+
             }).catch(e => dbg.warn('[PhysicsPro]', e));
           }
         },

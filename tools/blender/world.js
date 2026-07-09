@@ -22,8 +22,8 @@ import {
   FLOOR_ASSETS,
 } from './world/shared.js';
 
-import {
 import { dbg } from '../../app/dbg.js';
+import {
   syncHighScore, submitLeaderboard, getHighScore, getUsername,
   createMultiplayerRoom, captureScreenshot, saveReplay,
   saveGameSnapshot, loadGameSnapshot, deleteGameSnapshot,
