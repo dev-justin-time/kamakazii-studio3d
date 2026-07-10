@@ -47,6 +47,9 @@ export class MarketplaceUI {
       <div class="k3d-mkt-overlay">
         <div class="k3d-mkt-sidebar">
           ${this._renderSidebar()}
+          <div class="k3d-mkt-sidebar-footer">
+            <button class="k3d-mkt-close-btn" id="k3d-mkt-close" title="Close Marketplace (Esc)">&times; Close</button>
+          </div>
         </div>
         <div class="k3d-mkt-main">
           <div class="k3d-mkt-viewport"></div>
@@ -54,12 +57,29 @@ export class MarketplaceUI {
       </div>
     `;
 
+    // Close button + Escape key
+    const closeBtn = this.container.querySelector('#k3d-mkt-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => this.unmount());
+    }
+    this._escHandler = (e) => {
+      if (e.key === 'Escape') this.unmount();
+    };
+    window.addEventListener('keydown', this._escHandler);
+
     this.viewport = this.container.querySelector('.k3d-mkt-viewport');
     this._attachSidebarEvents();
     this.showView('browse');
   }
 
   unmount() {
+    if (this._escHandler) {
+      window.removeEventListener('keydown', this._escHandler);
+      this._escHandler = null;
+    }
+    this._destroyModelPreview();
+    // Guard against double-unmount (Escape key + close button both call unmount)
+    if (!this.container.querySelector('.k3d-mkt-overlay')) return;
     this.container.innerHTML = '';
   }
 

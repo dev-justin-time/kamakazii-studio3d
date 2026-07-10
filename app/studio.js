@@ -7,17 +7,7 @@ import '../shared/studio-globals.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { OBJExporter } from 'three/addons/exporters/OBJExporter.js';
-import { STLExporter } from 'three/addons/exporters/STLExporter.js';
-import { safeGetColor, safeGetColorHexStr, safeCopyColor } from './material-helpers.js';
+// Import/export delegated to ModelIO.js — no duplicate loaders here
 import { ParticleSystem } from '../systems/ParticleSystem.js';
 import { WeatherSystem } from '../systems/WeatherSystem.js';
 import { WaterSystem } from '../systems/WaterSystem.js';
@@ -1454,253 +1444,41 @@ export class Studio {
     return { bones, skinnedMeshes, clips };
   }
 
-  // ── Import/Export ──
+  // ── Import/Export (delegated to ModelIO.js) ──
+
+  /** Lazily create or return the shared ModelIO singleton. */
+  async _getOrCreateModelIO() {
+    if (this._modelIO) return this._modelIO;
+    const { getModelIO } = await import('../editor/ModelIO.js');
+    this._modelIO = await getModelIO({
+      scene: this.scene,
+      camera: this.camera,
+      renderer: this.renderer,
+      objects: this.objects,
+      selectObject: (obj) => this.selectObject(obj),
+      frameAtDistance: () => {},
+      updateOutliner: () => {},
+      ui: { log: (msg, type) => log(msg) },
+      pluginRegistry: null,
+    });
+    return this._modelIO;
+  }
+
+  /**
+   * Import a model from File, URL string, or multi-file package.
+   * Delegates to ModelIO.js for format handling, then applies
+   * studio-specific post-processing (undo, ground alignment, rigging detection).
+   */
   async importModel(source) {
-    // Support multi-file packages: { url, files: { filename -> objectURL }, name }
-    if (source && typeof source === 'object' && source.url && source.files) {
-      return this._importGLTFMulti(source);
-    }
-    // Single File object
-    if (source instanceof File) {
-      const ext = source.name.toLowerCase().split('.').pop();
-      if (ext === 'gltf' || ext === 'glb') return this._importGLTF(source);
-      if (ext === 'obj') return this._importOBJ(source);
-      if (ext === 'stl') return this._importSTL(source);
-      if (ext === 'ply') return this._importPLY(source);
-      if (ext === 'fbx') return this._importFBX(source);
-      if (ext === 'dae') return this._importCollada(source);
-      log(`Unsupported format: .${ext}. Supported: gltf, glb, obj, stl, ply, fbx, dae`, 'error');
-      return;
-    }
-    // Single URL string
-    if (typeof source === 'string') {
-      return this._importGLTF(source);
-    }
-    log('Unrecognized import source', 'error');
-  }
-
-  /** Import a multi-file glTF package (.gltf + .bin + textures) */
-  _importGLTFMulti(pkg) {
-    return new Promise((resolve, reject) => {
-      // Isolated manager so URLModifier doesn't leak to DefaultLoadingManager
-      const manager = new THREE.LoadingManager();
-      manager.setURLModifier((url) => {
-        const filename = url.split('/').pop().split('?')[0];
-        if (pkg.files[filename]) return pkg.files[filename];
-        if (url.startsWith('data:')) return url;
-        const decoded = decodeURIComponent(filename);
-        if (pkg.files[decoded]) return pkg.files[decoded];
-        return url;
-      });
-
-      const loader = new GLTFLoader(manager);
-      const draco = new DRACOLoader();
-      draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-      loader.setDRACOLoader(draco);
-
-      const nameHint = pkg.name || 'Imported';
-      const revokeAll = () => {
-        Object.values(pkg.files).forEach(u => URL.revokeObjectURL(u));
-      };
-
-      loader.load(pkg.url, (gltf) => {
-        const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
-        root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-        root.name = nameHint.replace(/\.[^/.]+$/, '');
-        this._detectRiggingAndAnimations(root, gltf);
-        this._alignToGround(root);
-        this.scene.add(root);
-        this.objects.push(root);
-        this.selectObject(root);
-        this.frameSelected();
-        this.pushUndo();
-        const clips = root.userData.animationClips || [];
-        if (clips.length > 0) this._playAnimationClips(root, clips);
-        log(`Imported ${nameHint} (${Object.keys(pkg.files).length} files)`);
-        revokeAll();
-        resolve(root);
-      }, undefined, (err) => {
-        log(`Import failed: ${err.message}`, 'error');
-        revokeAll();
-        reject(err);
-      });
-    });
-  }
-
-  _importGLTF(file) {
-    return new Promise((resolve, reject) => {
-      const loader = new GLTFLoader();
-      const draco = new DRACOLoader();
-      draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-      loader.setDRACOLoader(draco);
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        loader.parse(e.target.result, '', (gltf) => {
-          const root = gltf.scene || gltf.scenes[0];
-          root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-          root.name = file.name.replace(/\.[^/.]+$/, '');
-          this._detectRiggingAndAnimations(root, gltf);
-          this._alignToGround(root);
-          this.scene.add(root);
-          this.objects.push(root);
-          this.selectObject(root);
-          this.frameSelected();
-          this.pushUndo();
-          const clips = root.userData.animationClips || [];
-          if (clips.length > 0) this._playAnimationClips(root, clips);
-          log(`Imported ${file.name}`);
-          resolve(root);
-        }, reject);
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // ── OBJ Import ──
-  _importOBJ(file) {
-    return new Promise((resolve, reject) => {
-      const loader = new OBJLoader();
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const result = loader.parse(e.target.result);
-          this._finalizeImport(result, file.name);
-          resolve(result);
-        } catch (err) {
-          log(`OBJ import failed: ${err.message}`, 'error');
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
-
-  // ── STL Import ──
-  _importSTL(file) {
-    return new Promise((resolve, reject) => {
-      const loader = new STLLoader();
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const geometry = loader.parse(e.target.result);
-          const material = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.1 });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          const group = new THREE.Group();
-          group.add(mesh);
-          this._finalizeImport(group, file.name);
-          resolve(group);
-        } catch (err) {
-          log(`STL import failed: ${err.message}`, 'error');
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // ── PLY Import ──
-  _importPLY(file) {
-    return new Promise((resolve, reject) => {
-      const loader = new PLYLoader();
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const geometry = loader.parse(e.target.result);
-          const material = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.1 });
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          // PLY files may contain vertex colors
-          if (geometry.attributes.color) {
-            material.vertexColors = true;
-            material.needsUpdate = true;
-          }
-          const group = new THREE.Group();
-          group.add(mesh);
-          this._finalizeImport(group, file.name);
-          resolve(group);
-        } catch (err) {
-          log(`PLY import failed: ${err.message}`, 'error');
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // ── FBX Import ──
-  _importFBX(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const loader = new FBXLoader();
-          const result = loader.parse(e.target.result, '');
-          this._finalizeImport(result, file.name, { animations: result.animations || [] });
-          resolve(result);
-        } catch (err) {
-          log(`FBX import failed: ${err.message}`, 'error');
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // ── Collada (.dae) Import ──
-  _importCollada(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const loader = new ColladaLoader();
-          const result = loader.parse(e.target.result, '');
-          const root = result.scene || new THREE.Group();
-          this._finalizeImport(root, file.name, { animations: result.animations || [] });
-          resolve(root);
-        } catch (err) {
-          log(`Collada import failed: ${err.message}`, 'error');
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
-  }
-
-
-
-  /** Shared post-import: shadow, name, rigging detection, select, frame, undo */
-  _finalizeImport(root, fileName, extra) {
-    root.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-    root.name = fileName.replace(/\.[^/.]+$/, '');
-    this._detectRiggingAndAnimations(root, extra || { animations: [] });
-
-    // Align the model so its bottom sits on the ground plane (y = -0.5)
-    this._alignToGround(root);
-
-    this.scene.add(root);
-    this.objects.push(root);
-    this.selectObject(root);
-    this.frameSelected();
+    const io = await this._getOrCreateModelIO();
     this.pushUndo();
-
-    // If the imported model has animation clips, play them immediately
-    const clips = root.userData.animationClips || (extra?.animations) || [];
-    if (clips.length > 0) {
-      this._playAnimationClips(root, clips);
-    }
-
-    log(`Imported ${fileName}`);
+    const root = await io.importFile(source, { frame: false, normalize: false });
+    this._alignToGround(root);
+    this._detectRiggingAndAnimations(root, { animations: [] });
+    this.frameSelected();
+    return root;
   }
+
 
   /**
    * Shift an object so its bottom bounding-box sits on the ground plane at y = -0.5.
@@ -1719,38 +1497,6 @@ export class Studio {
     }
   }
 
-  /**
-   * Create animation mixers and play all animation clips found on an imported model.
-   * Stores mixers in this._mixers so they're updated every frame.
-   *
-   * Also auto-extracts unique clips into the Motion Database so re-imports
-   * cannot create duplicate entries (signature-dedup in motionStorage).
-   * Extraction is fire-and-forget — UI status is updated via log().
-   */
-  _playAnimationClips(root, clips) {
-    if (!clips || clips.length === 0) return;
-    const mixer = new THREE.AnimationMixer(root);
-    mixer._root = root;
-    for (const clip of clips) {
-      const action = mixer.clipAction(clip);
-      if (action) {
-        action.play();
-      }
-    }
-    this._mixers.push(mixer);
-    log(`▶ Playing ${clips.length} animation clip(s) on imported model`);
-
-    // ── Auto-extract clips to the Motion Database ─────────────
-    // Skip on library loads that opt out of extraction (none today,
-    // but the flag is here so future private assets can disable).
-    if (!this._motionExtractionDisabled) {
-      import('../editor/motionStorage.js').then(({ extractAndSaveMotions }) => {
-        extractAndSaveMotions(clips, root?.name || 'imported', root?.name || '').then(({ added, skipped }) => {
-          if (added > 0) log(`💾 Extracted ${added} new motion(s) to motion database (${skipped} duplicate skipped)`);
-        });
-      }).catch(() => { /* motionStorage unavailable — silent */ });
-    }
-  }
 
   /**
    * Apply a stored motion (from the Motion Database) to the currently
@@ -1815,52 +1561,24 @@ export class Studio {
     return { ok: true, boundTracks: entry.trackCount, totalTracks: entry.trackCount };
   }
 
-  // ── Export with baked textures (GLB with embedded textures) ──
-  exportModel(format) {
+  // ── Export (delegated to ModelIO.js) ──
+
+  async exportModel(format) {
     const obj = this.selectedObject || this.scene;
-    if (format === 'glb') this._exportGLTF(obj, true);
-    else if (format === 'gltf') this._exportGLTF(obj, false);
-    else if (format === 'obj') this._exportOBJ(obj);
-    else if (format === 'stl') this._exportSTL(obj);
-    else if (format === 'glb-textured') this._exportGLTFTextured(obj);
+    if (format === 'glb-textured') {
+      await this._exportGLTFTextured(obj);
+      return;
+    }
+    const io = await this._getOrCreateModelIO();
+    io.exportAs(format, obj);
   }
 
-  _exportGLTF(object, binary) {
-    const exporter = new GLTFExporter();
-    exporter.parse(object, (result) => {
-      const blob = new Blob([binary ? result : JSON.stringify(result)], { type: binary ? 'model/gltf-binary' : 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = binary ? 'export.glb' : 'export.gltf';
-      a.click();
-      log('Exported');
-    }, { binary, onlyVisible: true });
-  }
 
-  _exportOBJ(object) {
-    const exporter = new OBJExporter();
-    const data = exporter.parse(object);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([data], { type: 'text/plain' }));
-    a.download = 'export.obj';
-    a.click();
-    log('Exported OBJ');
-  }
-
-  _exportSTL(object) {
-    const exporter = new STLExporter();
-    const data = exporter.parse(object);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([data], { type: 'application/sla' }));
-    a.download = 'export.stl';
-    a.click();
-    log('Exported STL');
-  }
 
   /** Export as GLB with all textures baked/embedded. Bakes vertex colors
    *  into a texture map so formats without vertex-color support still carry
    *  the painted appearance. */
-  _exportGLTFTextured(object) {
+  async _exportGLTFTextured(object) {
     // Step 1: bake vertex colors into texture maps for meshes that have them
     const bakedMeshes = [];
     object.traverse((child) => {
@@ -1945,6 +1663,7 @@ export class Studio {
     };
 
     // Step 2: Export as GLB (embeds all textures)
+    const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
     const exporter = new GLTFExporter();
     exporter.parse(object, (result) => {
       const blob = new Blob([result], { type: 'model/gltf-binary' });
@@ -2337,27 +2056,19 @@ export class Studio {
     log('Generated wireframe valley');
   }
 
-  /** Export just the wireframe valley as a GLB/GLTF file */
-  exportValleyAsGLTF() {
+  /** Export the wireframe valley via ModelIO. */
+  async exportValleyAsGLTF() {
     const valley = this.scene.getObjectByName('Wireframe Valley');
     if (!valley) { log('No wireframe valley found — generate one first', 'error'); return; }
-    // Temporarily select the valley so the exporter uses it as the root
-    const prevSelection = this.selectedObject;
-    this.selectObject(valley);
-    this._exportGLTF(valley, false); // false = .gltf (text), true would be .glb
-    // Restore previous selection
-    this.selectObject(prevSelection);
-    log('Exported valley as GLTF');
+    const io = await this._getOrCreateModelIO();
+    io.exportAs('gltf', valley, { filename: 'valley.gltf' });
   }
 
-  exportValleyAsGLB() {
+  async exportValleyAsGLB() {
     const valley = this.scene.getObjectByName('Wireframe Valley');
     if (!valley) { log('No wireframe valley found — generate one first', 'error'); return; }
-    const prevSelection = this.selectedObject;
-    this.selectObject(valley);
-    this._exportGLTF(valley, true);
-    this.selectObject(prevSelection);
-    log('Exported valley as GLB');
+    const io = await this._getOrCreateModelIO();
+    io.exportAs('glb', valley, { filename: 'valley.glb' });
   }
 
   /** Select all building meshes (named Building_*) and group them for batch editing */

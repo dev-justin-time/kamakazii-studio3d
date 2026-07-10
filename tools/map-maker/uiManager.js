@@ -1,5 +1,5 @@
 import { setupDragging, processHeightmapToData } from './uiUtils.js';
-import { saveMap, loadMap, listMaps, deleteMap, exportMap, importMapFromFile, buildMapSnapshot, applyMapSnapshot } from './mapStorage.js';
+import { saveMap, loadMap, listMaps, deleteMap, exportMap, importMapFromFile, buildMapSnapshot, applyMapSnapshot, shipToGame } from './mapStorage.js';
 import { dbg } from '../../app/dbg.js';
 
 export class UIManager {
@@ -376,6 +376,28 @@ export class UIManager {
             const snap = buildMapSnapshot(name, app);
             exportMap(snap);
             status('📤 Exported: ' + name);
+        });
+
+        // Ship to Game — saves to cloud + localStorage and downloads as file backup
+        document.getElementById('ship-to-game-btn')?.addEventListener('click', async () => {
+            const nameInput = document.getElementById('map-name-input');
+            const name = (nameInput?.value || '').trim() || 'Shared Map';
+            const snap = buildMapSnapshot(name, app);
+
+            // Try posting to the game window first (if running inside an iframe)
+            const sent = shipToGame(snap);
+
+            // Save to cloud + localStorage as primary storage
+            await saveMap(snap);
+
+            // Also download as a file backup so user has it on device
+            exportMap(snap);
+
+            if (sent) {
+                status('🚀 Shipped + saved: ' + name);
+            } else {
+                status('💾 Saved + downloaded: ' + name + ' (open game to load)');
+            }
         });
 
         // Load (toggle library panel)

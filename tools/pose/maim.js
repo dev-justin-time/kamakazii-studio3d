@@ -23,15 +23,19 @@ const _importHistory = [];
 export async function importModel(source, opts = {}) {
   const { scene, center = true, normalize = true } = opts;
 
-  // Use ModelIO if available
+  // Use ModelIO if available (studio pipeline)
   const modelIO = window.ProModelerApp?.modelIO;
   if (modelIO) {
-    const result = await modelIO.importFile(source, { frame: true, addToScene: true });
-    _importHistory.push({ source, timestamp: Date.now(), name: result?.name || 'import' });
-    return result;
+    try {
+      const result = await modelIO.importFile(source, { frame: true, addToScene: true });
+      _importHistory.push({ source, timestamp: Date.now(), name: result?.name || 'import' });
+      return result;
+    } catch (_) {
+      // ModelIO failed, fall through to GLTFLoader
+    }
   }
 
-  // Fallback: direct Three.js loader
+  // Fallback: GLTFLoader
   const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
   const loader = new GLTFLoader();
 

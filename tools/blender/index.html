@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kamakazii Blender — 3D Modeling Tool</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; color: #e0e0e0; font: 13px/1.4 system-ui, -apple-system, sans-serif; }
+
+    /* ── Menu Bar ── */
+    #top-menu { display: flex; align-items: center; height: 32px; background: #2a2a2a; border-bottom: 1px solid #444; padding: 0 8px; z-index: 100; }
+    .menu-left { display: flex; gap: 2px; align-items: center; flex: 1; }
+    .menu-item { position: relative; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #ccc; user-select: none; }
+    .menu-item:hover { background: #3a3a3a; }
+    .menu-item.dropdown > .dropdown-content { display: none; position: absolute; top: 100%; left: 0; min-width: 200px; background: #2d2d2d; border: 1px solid #555; border-radius: 6px; padding: 4px; z-index: 200; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+    .menu-item.dropdown:hover > .dropdown-content { display: block; }
+    .menu-item.dropdown > .dropdown-content .menu-item { padding: 6px 12px; font-size: 12px; border-radius: 3px; white-space: nowrap; }
+    .menu-item.dropdown > .dropdown-content .menu-item:hover { background: #4a9eff; color: #fff; }
+    .menu-separator { width: 1px; height: 20px; background: #444; margin: 0 4px; }
+    #modeling-tools-bar { display: none; align-items: center; gap: 2px; padding: 0 4px; height: 32px; background: #252525; border-bottom: 1px solid #444; z-index: 99; }
+    #modeling-tools-bar.visible { display: flex; }
+    .tool-btn { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: none; border-radius: 4px; background: transparent; color: #aaa; cursor: pointer; font-size: 12px; transition: all .15s; }
+    .tool-btn:hover { background: #3a3a3a; color: #fff; }
+    .tool-btn.active { background: #4a9eff; color: #fff; }
+    .tool-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .tool-btn:disabled:hover { background: transparent; color: #aaa; }
+    #modeling-gizmo-toggle { width: auto; padding: 0 8px; font-size: 11px; display: none; }
+    #modeling-gizmo-toggle.active { background: #2e7d32; color: #fff; }
+
+    /* ── Main Layout ── */
+    #viewport-container { flex: 1; position: relative; overflow: hidden; background: #1a1a1a; }
+    #viewport-container canvas { display: block; width: 100% !important; height: 100% !important; }
+    #box-select-overlay { position: absolute; border: 1px dashed #4a9eff; background: rgba(74,158,255,0.1); pointer-events: none; display: none; z-index: 50; }
+
+    /* ── Floating Panels ── */
+    .floating-panel { position: fixed; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); display: flex; flex-direction: column; overflow: hidden; z-index: 80; min-width: 180px; }
+    .floating-panel.collapsed .panel-body { display: none; }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #333; border-bottom: 1px solid #444; cursor: grab; user-select: none; min-height: 28px; }
+    .panel-header:active { cursor: grabbing; }
+    .panel-header h3 { font-size: 11px; font-weight: 600; color: #ccc; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
+    .panel-header .header-actions { display: flex; align-items: center; gap: 4px; }
+    .pref-collapse-button { background: none; border: none; color: #888; cursor: pointer; font-size: 10px; padding: 2px 4px; }
+    .pref-collapse-button:hover { color: #fff; }
+    .panel-close-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.06); border: none; border-radius: 6px; color: #888; font-size: 14px; cursor: pointer; transition: all .15s; }
+    .panel-close-btn:hover { background: rgba(255,70,70,0.2); color: #ff5555; }
+    .panel-body { flex: 1; overflow-y: auto; padding: 8px; }
+    .panel-body.collapsed { display: none; }
+
+    /* ── Scene Collection ── */
+    #scene-collection-panel { top: 60px; left: 10px; width: 220px; max-height: 300px; }
+    .scene-collection-item { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; color: #bbb; transition: background .1s; }
+    .scene-collection-item:hover { background: #3a3a3a; }
+    .scene-collection-item.active { background: rgba(74,158,255,0.15); color: #4a9eff; }
+    .scene-collection-item.primary-selected { background: #4a9eff; color: #fff; }
+    .scene-collection-item .object-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .scene-collection-item .visibility-icon { font-size: 12px; opacity: 0.6; cursor: pointer; padding: 2px 4px; }
+    .scene-collection-item .visibility-icon:hover { opacity: 1; }
+    .object-name-input { width: 100%; background: #1a1a1a; border: 1px solid #4a9eff; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 12px; outline: none; }
+
+    /* ── Properties Panel ── */
+    #properties-panel { top: 60px; right: 10px; width: 260px; max-height: calc(100vh - 100px); }
+    .props-category-bar { display: flex; gap: 1px; padding: 4px; background: #222; border-bottom: 1px solid #333; flex-wrap: wrap; }
+    .props-category-button { flex: 1; min-width: 32px; padding: 4px 6px; border: none; border-radius: 4px; background: transparent; color: #888; cursor: pointer; font-size: 11px; text-align: center; transition: all .15s; }
+    .props-category-button:hover { background: #3a3a3a; color: #ccc; }
+    .props-category-button.active { background: #4a9eff; color: #fff; }
+    .props-category-content { display: none; }
+    .props-category-content.active { display: block; }
+    .props-section-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; background: #333; border-radius: 4px; margin-bottom: 4px; cursor: pointer; }
+    .props-section-header h4 { font-size: 11px; font-weight: 600; color: #aaa; margin: 0; }
+    .props-section-body { padding: 4px 8px; }
+    .props-section-body.collapsed { display: none; }
+    .prop-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .prop-row label { font-size: 11px; color: #888; min-width: 50px; }
+    .prop-row input[type="number"], .prop-row input[type="text"], .prop-row select { flex: 1; background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 4px 6px; border-radius: 3px; font-size: 11px; }
+    .prop-row input[type="color"] { width: 28px; height: 24px; border: none; border-radius: 3px; cursor: pointer; background: none; padding: 0; }
+    .prop-row input[type="range"] { flex: 1; accent-color: #4a9eff; }
+    .prop-row .range-val { font-size: 10px; color: #666; min-width: 28px; text-align: right; }
+    .small-btn { padding: 3px 8px; border: 1px solid #555; border-radius: 3px; background: #333; color: #ccc; cursor: pointer; font-size: 10px; }
+    .small-btn:hover { background: #444; color: #fff; }
+    .small-btn.danger { border-color: #c62828; color: #ef5350; }
+    .small-btn.danger:hover { background: #c62828; color: #fff; }
+    #applied-modifiers-list .modifier-entry { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: #333; border-radius: 4px; margin-bottom: 4px; font-size: 11px; }
+    #no-modifiers-message { font-size: 11px; color: #666; text-align: center; padding: 8px; }
+
+    /* ── Context Menus ── */
+    .context-menu { position: fixed; background: #2d2d2d; border: 1px solid #555; border-radius: 6px; padding: 4px; min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: none; z-index: 300; }
+    .context-menu .menu-item { padding: 6px 12px; font-size: 12px; border-radius: 3px; color: #ccc; }
+    .context-menu .menu-item:hover { background: #4a9eff; color: #fff; }
+    .context-menu .menu-item.disabled { opacity: 0.35; pointer-events: none; }
+    .context-menu .menu-separator { height: 1px; background: #444; margin: 4px 0; }
+
+    /* ── UV Editor ── */
+    #uv-editor-panel { display: none; background: #222; border-top: 1px solid #444; height: 220px; position: relative; }
+    #uv-editor-panel.visible { display: flex; }
+    .uv-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #2a2a2a; border-bottom: 1px solid #333; }
+    .uv-toolbar button { padding: 3px 8px; background: #404040; border: 1px solid #555; border-radius: 3px; color: #ccc; cursor: pointer; font-size: 11px; }
+    .uv-toolbar button:hover { background: #505050; color: #fff; }
+    #uvCanvas { flex: 1; background: #3a3a3a; }
+    #uv-image-info { display: none; align-items: center; gap: 6px; padding: 0 8px; font-size: 10px; color: #888; }
+    .new-image-dialog { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; border: 1px solid #555; border-radius: 8px; padding: 16px; min-width: 300px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 400; display: none; }
+    .new-image-dialog h3 { font-size: 13px; margin-bottom: 12px; color: #ddd; }
+    .new-image-dialog .dialog-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .new-image-dialog label { font-size: 11px; color: #888; min-width: 50px; }
+    .new-image-dialog input, .new-image-dialog select { flex: 1; background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 4px 6px; border-radius: 3px; font-size: 11px; }
+    .new-image-dialog .dialog-actions { display: flex; gap: 6px; margin-top: 12px; justify-content: flex-end; }
+    .new-image-dialog .dialog-actions button { padding: 5px 12px; border-radius: 4px; border: none; cursor: pointer; font-size: 12px; }
+    #new-image-color-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    #new-image-prompt-input { display: none; }
+
+    /* ── Shader Editor ── */
+    #shader-editor-panel { display: none; background: #1e1e1e; border-top: 1px solid #444; height: 260px; position: relative; flex-direction: column; }
+    #shader-editor-panel.visible { display: flex; }
+    .shader-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: #2a2a2a; border-bottom: 1px solid #333; }
+    #shader-add-node-button { padding: 3px 10px; background: #404040; border: 1px solid #555; border-radius: 3px; color: #ccc; cursor: pointer; font-size: 11px; }
+    #shader-add-node-button:hover { background: #505050; color: #fff; }
+    #shader-node-graph-area { flex: 1; position: relative; overflow: hidden; }
+    .shader-node { position: absolute; width: 180px; background: #2a2a2a; border: 1px solid #555; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    .shader-node.selected { border-color: #4a9eff; }
+    .shader-node .node-header { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px; background: #333; border-radius: 5px 5px 0 0; cursor: grab; }
+    .shader-node .node-header:active { cursor: grabbing; }
+    .shader-node .node-header span { font-size: 11px; font-weight: 600; color: #ddd; }
+    .shader-node .node-delete-button { background: none; border: none; color: #888; cursor: pointer; font-size: 11px; }
+    .shader-node .node-delete-button:hover { color: #ff5555; }
+    .shader-node .node-content { padding: 6px 8px; }
+    .node-input-row, .node-output-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; color: #aaa; }
+    .node-output-row { justify-content: flex-end; }
+    .node-port { width: 10px; height: 10px; border-radius: 50%; cursor: crosshair; border: 2px solid #555; flex-shrink: 0; }
+    .node-port:hover { border-color: #4a9eff; }
+    .node-port.input-port { margin-right: 4px; }
+    .node-port.output-port { margin-left: 4px; }
+    .node-input-field { background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 2px 4px; border-radius: 2px; font-size: 10px; width: 80px; }
+    .node-input-field[type="color"] { width: 30px; height: 18px; padding: 1px; }
+    .node-input-field[type="number"] { width: 60px; }
+    #temp-connection-line { display: none; stroke-width: 2; fill: none; }
+    .shader-connection-line { stroke-width: 2; fill: none; }
+
+    /* ── Add Shader Node Menu ── */
+    #add-shader-node-menu { position: fixed; background: #2d2d2d; border: 1px solid #555; border-radius: 6px; padding: 4px; min-width: 160px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: none; z-index: 300; }
+    #add-shader-node-menu .menu-item { padding: 6px 12px; font-size: 12px; border-radius: 3px; color: #ccc; cursor: pointer; }
+    #add-shader-node-menu .menu-item:hover { background: #4a9eff; color: #fff; }
+    .add-shader-node-submenu { display: none; padding-left: 16px; }
+    .add-shader-node-submenu .menu-item { font-size: 11px; }
+
+    /* ── Add Modifier Menu ── */
+    #add-modifier-menu { position: fixed; background: #2d2d2d; border: 1px solid #555; border-radius: 6px; padding: 4px; min-width: 140px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: none; z-index: 300; }
+    #add-modifier-menu .menu-item { padding: 6px 12px; font-size: 12px; border-radius: 3px; color: #ccc; cursor: pointer; }
+    #add-modifier-menu .menu-item:hover { background: #4a9eff; color: #fff; }
+
+    /* ── AI Chat Panel ── */
+    #ai-chat-panel { position: fixed; bottom: 10px; right: 10px; width: 320px; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); display: flex; flex-direction: column; z-index: 90; max-height: 400px; }
+    #ai-chat-panel.collapsed #chat-history,
+    #ai-chat-panel.collapsed .chat-input-row { display: none; }
+    #ai-chat-panel-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #333; border-radius: 7px 7px 0 0; cursor: grab; user-select: none; }
+    #ai-chat-panel-header:active { cursor: grabbing; }
+    #ai-chat-panel-header h3 { font-size: 12px; font-weight: 600; color: #ccc; margin: 0; }
+    .chat-header-actions { display: flex; align-items: center; gap: 6px; }
+    #language-select { background: #1a1a1a; border: 1px solid #444; color: #ccc; border-radius: 3px; font-size: 10px; padding: 2px 4px; }
+    #collapse-chat-button { background: none; border: none; color: #888; cursor: pointer; font-size: 12px; }
+    #collapse-chat-button:hover { color: #fff; }
+    #chat-history { flex: 1; overflow-y: auto; padding: 8px; max-height: 280px; }
+    .chat-message { padding: 4px 8px; margin-bottom: 4px; border-radius: 4px; font-size: 11px; line-height: 1.5; }
+    .chat-message.user { background: rgba(74,158,255,0.1); color: #93c5fd; }
+    .chat-message.ai { background: rgba(100,200,100,0.08); color: #86efac; }
+    .chat-input-row { display: flex; gap: 4px; padding: 8px; border-top: 1px solid #444; }
+    #user-input { flex: 1; background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 6px 8px; border-radius: 4px; font-size: 12px; outline: none; }
+    #user-input:focus { border-color: #4a9eff; }
+    #send-button { padding: 6px 12px; background: #4a9eff; border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 12px; }
+    #send-button:hover { background: #3a8eef; }
+
+    /* ── Prompt 3D Editor ── */
+    #prompt-3d-editor-container { display: none; position: absolute; left: 0; top: 0; bottom: 0; width: 280px; background: #2a2a2a; border-right: 1px solid #444; padding: 12px; overflow-y: auto; z-index: 10; }
+    #prompt-3d-editor-container.visible { display: block; }
+    .prompt-input-row { display: flex; gap: 6px; margin-bottom: 12px; }
+    #prompt-input { flex: 1; background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 8px; border-radius: 4px; font-size: 12px; resize: vertical; min-height: 80px; outline: none; }
+    #prompt-input:focus { border-color: #4a9eff; }
+    #submit-prompt-btn { padding: 8px 16px; background: #4a9eff; border: none; border-radius: 4px; color: #fff; cursor: pointer; font-size: 12px; width: 100%; }
+    #submit-prompt-btn:hover { background: #3a8eef; }
+
+    /* ── Text Dialog ── */
+    #new-text-dialog { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2a2a2a; border: 1px solid #555; border-radius: 8px; padding: 20px; min-width: 320px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); z-index: 500; display: none; }
+    #new-text-dialog h3 { font-size: 14px; margin-bottom: 16px; color: #ddd; }
+    .dialog-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .dialog-row label { font-size: 11px; color: #888; min-width: 50px; }
+    .dialog-row input, .dialog-row select { flex: 1; background: #1a1a1a; border: 1px solid #444; color: #ddd; padding: 6px 8px; border-radius: 4px; font-size: 12px; }
+    .dialog-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+    .dialog-actions button { padding: 6px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .dialog-actions button.primary { background: #4a9eff; color: #fff; }
+    .dialog-actions button.primary:hover { background: #3a8eef; }
+    .dialog-actions button.secondary { background: #444; color: #ccc; }
+    .dialog-actions button.secondary:hover { background: #555; }
+
+    /* ── Status Bar ── */
+    #status-bar { display: flex; align-items: center; justify-content: space-between; height: 22px; padding: 0 10px; background: #1a1a1a; border-top: 1px solid #333; font-size: 10px; color: #888; flex-shrink: 0; z-index: 50; }
+    #status-bar .status-left { display: flex; gap: 12px; }
+    #status-bar .status-right { display: flex; gap: 12px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+    /* ── Focus Visible ── */
+    :focus-visible { outline: 2px solid #4a9eff; outline-offset: 2px; }
+    :focus:not(:focus-visible) { outline: none; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- ── Menu Bar ── -->
+  <div id="top-menu">
+    <div class="menu-left">
+      <!-- File -->
+      <div class="menu-item dropdown">
+        File
+        <div class="dropdown-content">
+          <div class="menu-item" id="import-glb">Import GLB…</div>
+          <div class="menu-item" id="export-glb">Export GLB</div>
+        </div>
+      </div>
+      <!-- Edit -->
+      <div class="menu-item dropdown">
+        Edit
+        <div class="dropdown-content">
+          <div class="menu-item" id="undo-menu-item">Undo <span style="float:right;color:#666">Ctrl+Z</span></div>
+          <div class="menu-item" id="redo-menu-item">Redo <span style="float:right;color:#666">Ctrl+Shift+Z</span></div>
+        </div>
+      </div>
+      <!-- Object -->
+      <div class="menu-item dropdown">
+        Object
+        <div class="dropdown-content">
+          <div class="menu-item" id="add-cube-menu-item">Add Cube</div>
+          <div class="menu-item" id="add-sphere-menu-item">Add UV Sphere</div>
+          <div class="menu-item" id="add-icosphere-menu-item">Add Ico Sphere</div>
+          <div class="menu-item" id="add-cone-menu-item">Add Cone</div>
+          <div class="menu-item" id="add-torus-menu-item">Add Torus</div>
+          <div class="menu-item" id="add-capsule-menu-item">Add Capsule</div>
+          <div class="menu-item" id="add-circle-menu-item">Add Circle</div>
+          <div class="menu-item" id="add-triangle-menu-item">Add Triangle</div>
+          <div class="menu-item" id="add-grid-menu-item">Add Grid</div>
+          <div class="menu-item" id="add-pyramid-menu-item">Add Pyramid</div>
+          <div class="menu-item" id="add-cylinder-menu-item">Add Cylinder</div>
+          <div style="height:1px;background:#444;margin:4px 0"></div>
+          <div class="menu-item" id="object-join-selected">Join Selected</div>
+          <div class="menu-item" id="object-delete">Delete</div>
+        </div>
+      </div>
+      <!-- Editor -->
+      <div class="menu-item dropdown">
+        Editor
+        <div class="dropdown-content">
+          <div class="menu-item" id="editor-type-3d-viewport">3D Viewport</div>
+          <div class="menu-item" id="editor-type-uv-editing">UV Editing</div>
+          <div class="menu-item" id="editor-type-shader-editor">Shader Editor</div>
+          <div class="menu-item" id="editor-type-prompt-3d-editor">Prompt 3D Editor</div>
+        </div>
+      </div>
+      <!-- Modeling -->
+      <div class="menu-item" id="modeling-menu-item">Modeling</div>
+    </div>
+  </div>
+
+  <!-- ── Modeling Tools Bar ── -->
+  <div id="modeling-tools-bar">
+    <button class="tool-btn" id="tool-select" title="Select (S)"><i class="fas fa-mouse-pointer"></i></button>
+    <button class="tool-btn" id="tool-move" title="Move (G)"><i class="fas fa-arrows-alt"></i></button>
+    <button class="tool-btn" id="tool-rotate" title="Rotate (R)"><i class="fas fa-sync-alt"></i></button>
+    <button class="tool-btn" id="tool-scale" title="Scale (S)"><i class="fas fa-expand-arrows-alt"></i></button>
+    <button class="tool-btn" id="tool-add-cube" title="Add Cube"><i class="fas fa-cube"></i></button>
+    <button class="tool-btn" id="tool-add-text3d" title="Add 3D Text"><i class="fas fa-font"></i></button>
+    <button class="tool-btn" id="tool-box-select" title="Box Select"><i class="fas fa-vector-square"></i></button>
+    <div style="width:1px;height:20px;background:#444;margin:0 4px"></div>
+    <button class="tool-btn" id="modeling-gizmo-toggle" title="Toggle Gizmo">Gizmo</button>
+  </div>
+
+  <!-- ── Viewport Container ── -->
+  <div id="viewport-container">
+    <canvas id="renderCanvas"></canvas>
+    <div id="box-select-overlay"></div>
+
+    <!-- ── Prompt 3D Editor ── -->
+    <div id="prompt-3d-editor-container">
+      <h3 style="font-size:13px;color:#ccc;margin-bottom:12px">Prompt 3D Editor</h3>
+      <div class="prompt-input-row">
+        <textarea id="prompt-input" placeholder="Describe the 3D object you want to create..."></textarea>
+      </div>
+      <button id="submit-prompt-btn">Generate</button>
+    </div>
+
+    <!-- ── UV Editor Panel ── -->
+    <div id="uv-editor-panel">
+      <div class="uv-toolbar">
+        <button id="uv-new-button">New</button>
+        <button id="uv-open-button">Open</button>
+        <input type="file" id="uv-image-file-input" accept="image/*" style="display:none">
+        <div id="uv-image-info">
+          <span id="uv-image-name-display"></span>
+          <button id="uv-clear-image-btn" class="small-btn">Clear</button>
+        </div>
+      </div>
+      <canvas id="uvCanvas"></canvas>
+      <!-- New Image Dialog -->
+      <div class="new-image-dialog" id="new-image-dialog">
+        <h3>New Image</h3>
+        <div class="dialog-row">
+          <label>Name</label>
+          <input type="text" id="new-image-name" value="Untitled">
+        </div>
+        <div class="dialog-row">
+          <label>Width</label>
+          <input type="number" id="new-image-width" value="1024" min="1">
+        </div>
+        <div class="dialog-row">
+          <label>Height</label>
+          <input type="number" id="new-image-height" value="1024" min="1">
+        </div>
+        <div id="new-image-color-row" class="dialog-row">
+          <label>Color</label>
+          <input type="color" id="new-image-color" value="#808080">
+        </div>
+        <div class="dialog-row" style="margin-bottom:4px">
+          <label>Type</label>
+          <div style="display:flex;gap:8px">
+            <label style="font-size:11px;color:#aaa"><input type="radio" name="new-image-type" value="blank" checked> Blank</label>
+            <label style="font-size:11px;color:#aaa"><input type="radio" name="new-image-type" value="uv_grid"> UV Grid</label>
+            <label style="font-size:11px;color:#aaa"><input type="radio" name="new-image-type" value="prompt"> Prompt</label>
+          </div>
+        </div>
+        <input type="text" id="new-image-prompt-input" placeholder="Describe the texture...">
+        <div class="dialog-actions">
+          <button class="secondary" id="cancel-new-image-btn">Cancel</button>
+          <button class="primary" id="create-new-image-btn">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Shader Editor Panel ── -->
+    <div id="shader-editor-panel">
+      <div class="shader-toolbar">
+        <button id="shader-add-node-button">+ Add Node</button>
+      </div>
+      <div id="shader-node-graph-area">
+        <svg id="shader-connections-svg" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1"></svg>
+        <path id="temp-connection-line" stroke="#4a9eff" stroke-width="2" fill="none" style="display:none;z-index:2"/>
+        <!-- Principled BSDF Node -->
+        <div class="shader-node" style="left:40px;top:20px" data-node-type="PrincipledBSDFNode">
+          <div class="node-header"><span>Principled BSDF</span><button class="node-delete-button" title="Delete Node">x</button></div>
+          <div class="node-content">
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:grey"></span><label>Base Color</label><input type="color" class="node-input-field" value="#808080"></div>
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:grey"></span><label>Metallic</label><input type="number" class="node-input-field" min="0" max="1" step="0.01" value="0"></div>
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:grey"></span><label>Roughness</label><input type="number" class="node-input-field" min="0" max="1" step="0.01" value="1"></div>
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:grey"></span><label>IOR</label><input type="number" class="node-input-field" min="1" max="3" step="0.01" value="1.5"></div>
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:grey"></span><label>Alpha</label><input type="number" class="node-input-field" min="0" max="1" step="0.01" value="1"></div>
+            <div class="node-input-row"><span class="node-port input-port normal-input-port" style="background-color:#8844ff"></span><label>Normal</label></div>
+            <div class="node-output-row"><label>Shader</label><span class="node-port output-port shader-port" style="background-color:#4a9eff"></span></div>
+          </div>
+        </div>
+        <!-- Material Output Node -->
+        <div class="shader-node" style="left:300px;top:60px" data-node-type="MaterialOutputNode">
+          <div class="node-header"><span>Material Output</span></div>
+          <div class="node-content">
+            <div class="node-input-row"><span class="node-port input-port shader-port" style="background-color:#4a9eff"></span><label>Surface</label></div>
+            <div class="node-input-row"><span class="node-port input-port" style="background-color:#8844ff"></span><label>Volume</label></div>
+            <div class="node-input-row"><span class="node-port input-port displacement-port" style="background-color:#44aa44"></span><label>Displacement</label></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Scene Collection Panel ── -->
+  <div id="scene-collection-panel" class="floating-panel">
+    <div id="scene-collection-panel-header" class="panel-header">
+      <h3>Scene Collection</h3>
+      <div class="header-actions">
+        <button class="panel-close-btn" title="Close">&times;</button>
+        <button class="pref-collapse-button" id="collapse-scene-collection-button">▼</button>
+      </div>
+    </div>
+    <div class="panel-body" id="scene-collection-list"></div>
+  </div>
+
+  <!-- ── Properties Panel ── -->
+  <div id="properties-panel" class="floating-panel">
+    <div id="properties-panel-header" class="panel-header">
+      <h3>Properties</h3>
+      <div class="header-actions">
+        <span id="selected-object-name-display" style="font-size:11px;color:#4a9eff;margin-right:4px"></span>
+        <button class="panel-close-btn" title="Close">&times;</button>
+        <button class="pref-collapse-button" id="collapse-properties-button">▼</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <!-- Category Tabs -->
+      <div class="props-category-bar">
+        <button class="props-category-button active" data-target="props-transform-content">Transform</button>
+        <button class="props-category-button" data-target="props-material-content">Material</button>
+        <button class="props-category-button" data-target="props-modifiers-content">Modifiers</button>
+        <button class="props-category-button" data-target="props-lighting-content">Lighting</button>
+      </div>
+      <!-- Transform -->
+      <div id="props-transform-content" class="props-category-content active">
+        <div class="prop-row"><label>Location X</label><input type="number" class="transform-input" data-type="position" data-axis="x" step="0.1" value="0"></div>
+        <div class="prop-row"><label>Location Y</label><input type="number" class="transform-input" data-type="position" data-axis="y" step="0.1" value="0"></div>
+        <div class="prop-row"><label>Location Z</label><input type="number" class="transform-input" data-type="position" data-axis="z" step="0.1" value="0"></div>
+        <div style="height:1px;background:#333;margin:8px 0"></div>
+        <div class="prop-row"><label>Rotation X</label><input type="number" class="transform-input" data-type="rotation" data-axis="x" step="1" value="0"></div>
+        <div class="prop-row"><label>Rotation Y</label><input type="number" class="transform-input" data-type="rotation" data-axis="y" step="1" value="0"></div>
+        <div class="prop-row"><label>Rotation Z</label><input type="number" class="transform-input" data-type="rotation" data-axis="z" step="1" value="0"></div>
+        <div style="height:1px;background:#333;margin:8px 0"></div>
+        <div class="prop-row"><label>Scale X</label><input type="number" class="transform-input" data-type="scale" data-axis="x" step="0.1" value="1"></div>
+        <div class="prop-row"><label>Scale Y</label><input type="number" class="transform-input" data-type="scale" data-axis="y" step="0.1" value="1"></div>
+        <div class="prop-row"><label>Scale Z</label><input type="number" class="transform-input" data-type="scale" data-axis="z" step="0.1" value="1"></div>
+      </div>
+      <!-- Material -->
+      <div id="props-material-content" class="props-category-content">
+        <div style="display:flex;gap:4px;margin-bottom:8px">
+          <select id="material-list" style="flex:1;background:#1a1a1a;border:1px solid #444;color:#ddd;padding:4px;border-radius:3px;font-size:11px"></select>
+          <button id="add-material-btn" class="small-btn" title="Add Material">+</button>
+          <button id="remove-material-btn" class="small-btn danger" title="Remove Material">−</button>
+        </div>
+        <div id="props-surface-header" class="props-section-header"><h4>Surface</h4><button class="pref-collapse-button">▼</button></div>
+        <div id="props-surface-body" class="props-section-body">
+          <div class="prop-row"><label>Color</label><input type="color" id="material-color" value="#808080"></div>
+          <div class="prop-row"><label>Metallic</label><input type="range" id="material-metallic" min="0" max="1" step="0.01" value="0"><span class="range-val">0.00</span></div>
+          <div class="prop-row"><label>Roughness</label><input type="range" id="material-roughness" min="0" max="1" step="0.01" value="1"><span class="range-val">1.00</span></div>
+          <div class="prop-row"><label>IOR</label><input type="range" id="material-ior" min="1" max="3" step="0.01" value="1.5"><span class="range-val">1.50</span></div>
+          <div class="prop-row"><label>Alpha</label><input type="range" id="material-alpha" min="0" max="1" step="0.01" value="1"><span class="range-val">1.00</span></div>
+        </div>
+      </div>
+      <!-- Modifiers -->
+      <div id="props-modifiers-content" class="props-category-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:11px;color:#aaa">Modifiers</span>
+          <button id="add-modifier-btn" class="small-btn">+ Add Modifier</button>
+        </div>
+        <div id="applied-modifiers-list"></div>
+        <p id="no-modifiers-message">No modifiers applied.</p>
+
+        <!-- Bevel Settings -->
+        <div id="props-bevel-header" class="props-section-header"><h4>Bevel</h4><button class="pref-collapse-button">▼</button></div>
+        <div id="props-bevel-body" class="props-section-body">
+          <div id="bevel-modifier-settings">
+            <div class="prop-row"><label>Affect</label><select id="bevel-affect-type"><option value="edges">Edges</option><option value="vertices">Vertices</option></select></div>
+            <div class="prop-row"><label>Width</label><select id="bevel-width-type"><option value="offset">Offset</option><option value="width">Width</option><option value="depth">Depth</option><option value="percent">Percent</option></select></div>
+            <div class="prop-row"><label>Amount</label><input type="number" id="bevel-amount" min="0" step="0.01" value="0.1"></div>
+            <div class="prop-row"><label>Segments</label><input type="number" id="bevel-segments" min="1" step="1" value="1"></div>
+            <div class="prop-row"><label>Limit</label><select id="bevel-limit-method"><option value="none">None</option><option value="angle">Angle</option><option value="weight">Weight</option></select></div>
+          </div>
+        </div>
+
+        <!-- Array Settings -->
+        <div id="props-array-header" class="props-section-header"><h4>Array</h4><button class="pref-collapse-button">▼</button></div>
+        <div id="props-array-body" class="props-section-body">
+          <div id="array-modifier-settings">
+            <div class="prop-row"><label>Fit</label><select id="array-fit-type"><option value="fixed">Fixed Count</option></select></div>
+            <div class="prop-row"><label>Count</label><input type="number" id="array-count" min="1" step="1" value="2"></div>
+            <div style="font-size:10px;color:#666;margin:4px 0">Relative Offset</div>
+            <div class="prop-row"><label>X</label><input type="number" id="array-rel-offset-x" step="0.1" value="1"></div>
+            <div class="prop-row"><label>Y</label><input type="number" id="array-rel-offset-y" step="0.1" value="0"></div>
+            <div class="prop-row"><label>Z</label><input type="number" id="array-rel-offset-z" step="0.1" value="0"></div>
+            <div style="font-size:10px;color:#666;margin:4px 0">Constant Offset</div>
+            <div class="prop-row"><label>X</label><input type="number" id="array-const-offset-x" step="0.1" value="0"></div>
+            <div class="prop-row"><label>Y</label><input type="number" id="array-const-offset-y" step="0.1" value="0"></div>
+            <div class="prop-row"><label>Z</label><input type="number" id="array-const-offset-z" step="0.1" value="0"></div>
+          </div>
+        </div>
+
+        <!-- Screw Settings -->
+        <div id="props-screw-header" class="props-section-header"><h4>Screw</h4><button class="pref-collapse-button">▼</button></div>
+        <div id="props-screw-body" class="props-section-body">
+          <div id="screw-modifier-settings">
+            <div class="prop-row"><label>Axis</label><select id="screw-axis"><option value="Y">Y</option><option value="X">X</option><option value="Z">Z</option></select></div>
+            <div class="prop-row"><label>Angle</label><input type="number" id="screw-angle" step="1" value="360"></div>
+            <div class="prop-row"><label>Screw</label><input type="number" id="screw-offset" step="0.1" value="0"></div>
+            <div class="prop-row"><label>Iterations</label><input type="number" id="screw-iterations" min="1" step="1" value="1"></div>
+            <div class="prop-row"><label>Steps</label><input type="number" id="screw-steps" min="1" step="1" value="16"></div>
+          </div>
+        </div>
+
+        <!-- Bend Settings -->
+        <div id="props-bend-header" class="props-section-header"><h4>Bend</h4><button class="pref-collapse-button">▼</button></div>
+        <div id="props-bend-body" class="props-section-body">
+          <div id="bend-modifier-settings">
+            <div class="prop-row"><label>Axis</label><select id="bend-axis"><option value="X">X</option><option value="Y">Y</option><option value="Z">Z</option></select></div>
+            <div class="prop-row"><label>Angle</label><input type="number" id="bend-angle" step="1" value="90"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Lighting -->
+      <div id="props-lighting-content" class="props-category-content">
+        <div id="pref-lighting-header" class="props-section-header"><h4>Lighting</h4><span class="pref-collapse-button">▼</span></div>
+        <div id="pref-lighting-body" class="props-section-body">
+          <div class="prop-row"><label>Brightness</label><input type="range" id="lighting-brightness" min="0" max="3" step="0.05" value="1"><span class="range-val">1.00</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Context Menus ── -->
+  <div id="context-menu" class="context-menu">
+    <div class="menu-item" id="delete-object-menu-item">Delete</div>
+  </div>
+
+  <div id="add-mesh-menu" class="context-menu">
+    <div class="menu-item" id="add-mesh-cube-item">Cube</div>
+    <div class="menu-item" id="add-mesh-uvsphere-item">UV Sphere</div>
+    <div class="menu-item" id="add-mesh-icosphere-item">Ico Sphere</div>
+    <div class="menu-item" id="add-mesh-cone-item">Cone</div>
+    <div class="menu-item" id="add-mesh-torus-item">Torus</div>
+    <div class="menu-item" id="add-mesh-capsule-item">Capsule</div>
+    <div class="menu-item" id="add-mesh-circle-item">Circle</div>
+    <div class="menu-item" id="add-mesh-triangle-item">Triangle (Prism)</div>
+    <div class="menu-item" id="add-mesh-grid-item">Grid</div>
+    <div class="menu-item" id="add-mesh-pyramid-item">Square Pyramid</div>
+    <div class="menu-item" id="add-mesh-cylinder-item">Cylinder</div>
+  </div>
+
+  <div id="scene-collection-context-menu" class="context-menu">
+    <div class="menu-item" id="rename-object-menu-item">Rename</div>
+    <div class="menu-item" id="copy-object-menu-item">Copy</div>
+    <div class="menu-item" id="paste-object-menu-item">Paste</div>
+    <div style="height:1px;background:#444;margin:4px 0"></div>
+    <div class="menu-item" id="delete-object-from-collection-menu-item">Delete</div>
+  </div>
+
+  <div id="add-modifier-menu" class="context-menu">
+    <div class="menu-item" id="add-modifier-bevel">Bevel</div>
+    <div class="menu-item" id="add-modifier-array">Array</div>
+    <div class="menu-item" id="add-modifier-screw">Screw</div>
+    <div class="menu-item" id="add-modifier-bend">Bend</div>
+  </div>
+
+  <div id="add-shader-node-menu" class="context-menu">
+    <div class="menu-item" id="shader-node-category-texture">
+      Texture
+      <div class="add-shader-node-submenu">
+        <div class="menu-item" id="add-shader-node-image-texture">Image Texture</div>
+        <div class="menu-item" id="add-shader-node-brick-texture">Brick Texture</div>
+        <div class="menu-item" id="add-shader-node-checker-texture">Checker Texture</div>
+        <div class="menu-item" id="add-shader-node-gradient-texture">Gradient Texture</div>
+        <div class="menu-item" id="add-shader-node-noise-texture">Noise Texture</div>
+      </div>
+    </div>
+    <div class="menu-item" id="shader-node-category-shader">
+      Shader
+      <div class="add-shader-node-submenu">
+        <div class="menu-item" id="add-shader-node-add-shader">Add Shader</div>
+      </div>
+    </div>
+  </div>    <!-- ── 3D Text Dialog ── -->
+  <div id="new-text-dialog">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="margin:0">Create 3D Text</h3>
+      <button class="panel-close-btn" title="Close" onclick="document.getElementById('new-text-dialog').style.display='none'">&times;</button>
+    </div>
+    <div class="dialog-row"><label>Text</label><input type="text" id="text-content" value="Hello"></div>
+    <div class="dialog-row"><label>Size</label><input type="number" id="text-size" min="0.1" step="0.1" value="1"></div>
+    <div class="dialog-row"><label>Depth</label><input type="number" id="text-depth" min="0.01" step="0.01" value="0.2"></div>
+    <div class="dialog-row"><label>Font</label><select id="text-font"><option>Helvetiker Regular</option><option>Helvetiker Bold</option><option>Gentilis Regular</option><option>Gentilis Bold</option></select></div>
+    <div class="dialog-actions">
+      <button class="secondary" id="cancel-3d-text-btn">Cancel</button>
+      <button class="primary" id="create-3d-text-btn">Create</button>
+    </div>
+  </div>    <!-- ── AI Chat Panel ── -->
+  <div id="ai-chat-panel">
+    <div id="ai-chat-panel-header">
+      <h3>AI Assistant</h3>
+      <div class="chat-header-actions">
+        <select id="language-select"><option value="en">EN</option><option value="ja">日本語</option></select>
+        <button id="collapse-chat-button">▼</button>
+        <button class="panel-close-btn" title="Close (Esc)" onclick="document.getElementById('ai-chat-panel').classList.add('collapsed')">&times;</button>
+      </div>
+    </div>
+    <div id="chat-history"></div>
+    <div class="chat-input-row">
+      <input type="text" id="user-input" placeholder="Ask me anything about 3D modeling...">
+      <button id="send-button">Send</button>
+    </div>
+  </div>
+
+  <!-- ── Status Bar ── -->
+  <div id="status-bar">
+    <div class="status-left">
+      <span>Objects: <span id="object-count">0</span></span>
+      <span>Memory: <span id="memory-usage">0.00 MB</span></span>
+    </div>
+    <div class="status-right">
+      <span>Kamakazii Blender</span>
+    </div>
+  </div>
+
+  <!-- Hidden file input for GLB import -->
+  <input type="file" id="file-input" accept=".glb,.gltf" multiple style="display:none">
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

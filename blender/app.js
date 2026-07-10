@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
 import { dbg } from '../app/dbg.js';
 
 /* Basic scene + renderer */
@@ -42,11 +41,24 @@ transform.addEventListener('dragging-changed', (event) => {
 
 // load player glb (preload)
 let playerGLTF = null;
-const gltfLoader = new GLTFLoader();
-gltfLoader.load('/player.glb', (g) => {
-  playerGLTF = g;
-}, undefined, (err) => {
-  dbg.warn('player.glb failed to load', err);
+// Lazy-loaded GLTFLoader (dynamic import to reduce bundle size)
+let gltfLoader = null;
+let _gltfLoaderPromise = null;
+function _getGltfLoader() {
+  if (!_gltfLoaderPromise) {
+    _gltfLoaderPromise = import("three/examples/jsm/loaders/GLTFLoader")
+      .then(m => { gltfLoader = new m.GLTFLoader(); return gltfLoader; })
+      .catch(err => { dbg.warn('GLTFLoader failed to load', err); return null; });
+  }
+  return _gltfLoaderPromise;
+}
+_getGltfLoader().then(loader => {
+  if (!loader) return;
+  loader.load('/player.glb', (g) => {
+    playerGLTF = g;
+  }, undefined, (err) => {
+    dbg.warn('player.glb failed to load', err);
+  });
 });
 
 /* State */

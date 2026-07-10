@@ -305,3 +305,50 @@ export function importMapFromFile(file) {
     reader.readAsText(file);
   });
 }
+
+// ---------------------------------------------------------------------------
+// Public API: Ship to Game
+// ---------------------------------------------------------------------------
+
+/**
+ * Ship a map to the Kamikazzi 3D game by posting the terrain data.
+ * This sends the map data via postMessage to any listening game windows.
+ * @param {object} snapshot — output of buildMapSnapshot()
+ * @param {Window} targetWindow — the game window to send to (default: opener)
+ * @returns {boolean} true if message was sent
+ */
+export function shipToGame(snapshot, targetWindow) {
+  if (!snapshot) {
+    dbg.warn('shipToGame: no snapshot provided');
+    return false;
+  }
+
+  const target = targetWindow || window.opener || window.parent;
+  if (!target || target === window || target === self) {
+    dbg.info('shipToGame: no external game window detected');
+    return false;
+  }
+
+  try {
+    const message = {
+      type: 'ship-terrain-to-game',
+      mapData: {
+        id: snapshot.id,
+        name: snapshot.name,
+        terrainParams: snapshot.terrainParams,
+        heightData: snapshot.heightData,
+        manualTrees: snapshot.manualTrees || [],
+        timestamp: snapshot.timestamp
+      }
+    };
+
+    target.postMessage(message, '*');
+    dbg.info('shipToGame: sent map "' + (snapshot.name || 'unnamed') + '" to game');
+    return true;
+  } catch (err) {
+    dbg.warn('shipToGame: failed to send message', err);
+    return false;
+  }
+}
+
+

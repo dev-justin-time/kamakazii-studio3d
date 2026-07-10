@@ -1087,6 +1087,37 @@
   border-radius: 6px;
 }
 
+/* ── Close Button ── */
+
+.k3d-mkt-sidebar-footer {
+  margin-top: auto;
+  padding: 12px;
+  border-top: 1px solid #333;
+}
+
+.k3d-mkt-close-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
+.k3d-mkt-close-btn:hover {
+  background: rgba(255,70,70,0.15);
+  border-color: rgba(255,70,70,0.3);
+  color: #ff5555;
+}
+
 /* ── Scrollbar (Webkit) ── */
 
 .k3d-mkt-main::-webkit-scrollbar,

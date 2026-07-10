@@ -1,79 +1,41 @@
 /**
  * ModelIO — Centralized model import/export hub for Kamakazii Studio 3D.
  *
- * Replaces scattered loader/exporter code across engine.js, studio.js,
- * ModelEditor.js, ImportExportManager.js, pose/main.js, and blender/script.js
- * with a single source of truth for all 3D format operations.
+ * This is the SINGLE source of truth for all 3D format operations.
+ * Every other file (studio.js, engine.js, CloudSystem.js, pose/main.js)
+ * must delegate imports through this module. No duplicate loader instances.
  *
- * Supported imports:  GLTF, GLB, OBJ, STL, PLY, FBX, Collada/DAE, 3DS, k3dasset
+ * Supported imports:  GLTF, GLB, OBJ, STL, PLY, FBX, Collada/DAE, k3dasset
  * Supported exports:  GLB, GLTF, OBJ, STL, PLY
  *
  * Usage:
- *   const io = new ModelIO(ctx);
+ *   import { getModelIO } from '../editor/ModelIO.js';
+ *   const io = await getModelIO(ctx);
  *   const wrapper = await io.importFile(file);
  *   await io.exportAs('glb', object);
  */
 
 import * as THREE from 'three';
+import { normalizeImport } from './import-normalize.js';
+import { dbg } from '../app/dbg.js';
 
-// ── Loader classes (lazy-loaded to avoid importing all at startup) ──
-
-let _GLTFLoader, _DRACOLoader, _OBJLoader, _STLLoader, _PLYLoader;
-let _FBXLoader, _ColladaLoader, _ThreeGLTFExporter, _OBJExporter, _STLExporter, _PLYExporter;
-
-const DRACO_PATH = 'https://www.gstatic.com/draco/v1/decoders/';
-
-/** Lazy-load all loader/exporter classes on first use. Uses allSettled so one failing loader doesn't block others. */
-async function _ensureLoaders() {
-  if (_GLTFLoader) return; // already loaded
-  const results = await Promise.allSettled([
-    import('three/addons/loaders/GLTFLoader.js'),       // 0
-    import('three/addons/loaders/DRACOLoader.js'),      // 1
-    import('three/addons/loaders/OBJLoader.js'),        // 2
-    import('three/addons/loaders/STLLoader.js'),        // 3
-    import('three/addons/loaders/PLYLoader.js'),        // 4
-    import('three/addons/loaders/FBXLoader.js'),        // 5
-    import('three/addons/loaders/ColladaLoader.js'),    // 6
-    import('three/addons/exporters/GLTFExporter.js'),   // 7
-    import('three/addons/exporters/OBJExporter.js'),    // 8
-    import('three/addons/exporters/STLExporter.js'),    // 9
-    import('three/addons/exporters/PLYExporter.js'),    // 10
-  ]);
-  const get = (i) => results[i].status === 'fulfilled' ? results[i].value : null;
-  _GLTFLoader        = get(0)?.GLTFLoader      || null;
-  _DRACOLoader       = get(1)?.DRACOLoader     || null;
-  _OBJLoader         = get(2)?.OBJLoader       || null;
-  _STLLoader         = get(3)?.STLLoader       || null;
-  _PLYLoader         = get(4)?.PLYLoader       || null;
-  _FBXLoader         = get(5)?.FBXLoader       || null;
-  _ColladaLoader     = get(6)?.ColladaLoader   || null;
-  _ThreeGLTFExporter = get(7)?.GLTFExporter    || null;
-  _OBJExporter       = get(8)?.OBJExporter     || null;
-  _STLExporter       = get(9)?.STLExporter     || null;
-  _PLYExporter       = get(10)?.PLYExporter    || null;
-  // Log any failures for debugging
-  results.forEach((r, i) => {
-    if (r.status === 'rejected') dbg.warn(`[ModelIO] Loader ${i} failed to load:`, r.reason);
-  });
-}
-
-// ── Import normalization helper ──
-
-import { normalizeImport, frameAtDistance } from './import-normalize.js';
-
-// ── Format detection ──
+// ── Format tables ──────────────────────────────────────────────────────────
 
 const IMPORT_EXTENSIONS = new Set([
-  'gltf', 'glb', 'obj', 'stl', 'ply', 'fbx', 'dae', '3ds', 'k3dasset',
+  'gltf', 'glb', 'obj', 'stl', 'ply', 'fbx', 'dae', 'k3dasset',
 ]);
 
 const EXPORT_FORMATS = new Map([
-  ['glb',    { mime: 'model/gltf-binary',      ext: '.glb' }],
-  ['gltf',   { mime: 'application/json',         ext: '.gltf' }],
-  ['obj',    { mime: 'text/plain',               ext: '.obj' }],
-  ['stl',    { mime: 'application/sla',           ext: '.stl' }],
-  ['ply',    { mime: 'application/octet-stream',  ext: '.ply' }],
+  ['glb',  { mime: 'model/gltf-binary',        ext: '.glb'  }],
+  ['gltf', { mime: 'application/json',          ext: '.gltf' }],
+  ['obj',  { mime: 'text/plain',                ext: '.obj'  }],
+  ['stl',  { mime: 'application/sla',           ext: '.stl'  }],
+  ['ply',  { mime: 'application/octet-stream',  ext: '.ply'  }],
 ]);
+
+const DRACO_DECODER_PATH = 'https://www.gstatic.com/draco/v1/decoders/';
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function _ext(name) {
   return (name || '').split('.').pop().toLowerCase().split('?')[0];
@@ -87,59 +49,209 @@ function _isGltfLike(ext) {
   return ext === 'gltf' || ext === 'glb';
 }
 
-// ── ModelIO class ──
+function _readAs(fn) {
+  return {
+    text(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = e => resolve(e.target.result);
+        r.onerror = () => reject(new Error(`Failed to read ${file.name || 'file'} as text`));
+        r.readAsText(file);
+      });
+    },
+    arrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = e => resolve(e.target.result);
+        r.onerror = () => reject(new Error(`Failed to read ${file.name || 'file'} as binary`));
+        r.readAsArrayBuffer(file);
+      });
+    },
+  };
+}
 
-import { dbg } from '../app/dbg.js';
+// ── Lazy loader registry (singleton-style, loaded once) ────────────────────
+
+let _loaders = null;
+let _loadersPromise = null;
+
+async function _ensureLoaders() {
+  if (_loaders) return _loaders;
+  if (_loadersPromise) return _loadersPromise;
+
+  _loadersPromise = (async () => {
+    const results = {};
+    const errors = [];
+
+    // Each loader is tried individually so one failure doesn't block others.
+    // We still track failures so we can report which formats are unavailable.
+
+    // GLTFLoader (required — most common format)
+    try {
+      const m = await import('three/addons/loaders/GLTFLoader.js');
+      results.GLTFLoader = m.GLTFLoader;
+    } catch (e) {
+      errors.push('GLTFLoader: ' + (e.message || e));
+    }
+
+    // DRACOLoader (required for Draco-compressed GLTF)
+    try {
+      const m = await import('three/addons/loaders/DRACOLoader.js');
+      results.DRACOLoader = m.DRACOLoader;
+    } catch (e) {
+      errors.push('DRACOLoader: ' + (e.message || e));
+    }
+
+    // OBJLoader
+    try {
+      const m = await import('three/addons/loaders/OBJLoader.js');
+      results.OBJLoader = m.OBJLoader;
+    } catch (e) {
+      errors.push('OBJLoader: ' + (e.message || e));
+    }
+
+    // STLLoader
+    try {
+      const m = await import('three/addons/loaders/STLLoader.js');
+      results.STLLoader = m.STLLoader;
+    } catch (e) {
+      errors.push('STLLoader: ' + (e.message || e));
+    }
+
+    // PLYLoader
+    try {
+      const m = await import('three/addons/loaders/PLYLoader.js');
+      results.PLYLoader = m.PLYLoader;
+    } catch (e) {
+      errors.push('PLYLoader: ' + (e.message || e));
+    }
+
+    // FBXLoader
+    try {
+      const m = await import('three/addons/loaders/FBXLoader.js');
+      results.FBXLoader = m.FBXLoader;
+    } catch (e) {
+      errors.push('FBXLoader: ' + (e.message || e));
+    }
+
+    // ColladaLoader
+    try {
+      const m = await import('three/addons/loaders/ColladaLoader.js');
+      results.ColladaLoader = m.ColladaLoader;
+    } catch (e) {
+      errors.push('ColladaLoader: ' + (e.message || e));
+    }
+
+    // Exporters
+    try {
+      const m = await import('three/addons/exporters/GLTFExporter.js');
+      results.GLTFExporter = m.GLTFExporter;
+    } catch (e) {
+      errors.push('GLTFExporter: ' + (e.message || e));
+    }
+    try {
+      const m = await import('three/addons/exporters/OBJExporter.js');
+      results.OBJExporter = m.OBJExporter;
+    } catch (e) {
+      errors.push('OBJExporter: ' + (e.message || e));
+    }
+    try {
+      const m = await import('three/addons/exporters/STLExporter.js');
+      results.STLExporter = m.STLExporter;
+    } catch (e) {
+      errors.push('STLExporter: ' + (e.message || e));
+    }
+    try {
+      const m = await import('three/addons/exporters/PLYExporter.js');
+      results.PLYExporter = m.PLYExporter;
+    } catch (e) {
+      errors.push('PLYExporter: ' + (e.message || e));
+    }
+
+
+    // Create the shared GLTFLoader instance (one per module lifetime).
+    // Individual methods that need a custom LoadingManager (e.g. multi-file
+    // glTF packages) still create their own via new L.GLTFLoader(manager).
+    results._sharedGltfLoader = new results.GLTFLoader();
+    if (results.DRACOLoader) {
+      const draco = new results.DRACOLoader();
+      draco.setDecoderPath(DRACO_DECODER_PATH);
+      results._sharedGltfLoader.setDRACOLoader(draco);
+    }
+
+    // GLTF/GLB is the most important format — fail hard if unavailable.
+    if (!results.GLTFLoader) {
+      throw new Error(
+        'GLTFLoader failed to load. Import/export requires GLTF support.\n' +
+        'Errors: ' + errors.join('; ')
+      );
+    }
+
+    if (!results.DRACOLoader) {
+      dbg.warn('[ModelIO] DRACOLoader unavailable — Draco-compressed models will not load');
+    }
+
+    if (errors.length) {
+      dbg.warn('[ModelIO] Some loaders unavailable: ' + errors.join('; '));
+    }
+
+    _loaders = results;
+    return results;
+  })();
+
+  return _loadersPromise;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ModelIO class
+// ═══════════════════════════════════════════════════════════════════════════
+
+const URL_FETCH_TIMEOUT_MS = 30000;
 
 export class ModelIO {
   /**
-   * @param {Object} ctx — Application context.
+   * @param {Object} ctx
    * @param {THREE.Scene}            ctx.scene
-   * @param {THREE.PerspectiveCamera} ctx.camera
+   * @param {THREE.Camera}           ctx.camera
    * @param {THREE.WebGLRenderer}    ctx.renderer
-   * @param {Array}                  ctx.objects         — scene object registry
-   * @param {Object|null}            ctx.pluginRegistry  — PluginRegistry (optional)
-   * @param {Object|null}            ctx.ui              — UIManager with .log() (optional)
-   * @param {function}               ctx.selectObject    — (obj) => void
-   * @param {function}               ctx.frameAtDistance  — (target, dist, elev, az) => void
-   * @param {function}               ctx.updateOutliner  — () => void
-   * @param {GLTFLoader}             [ctx.gltfLoader]    — optional pre-created loader
+   * @param {Array}                  ctx.objects
+   * @param {Object|null}            ctx.pluginRegistry
+   * @param {Object|null}            ctx.ui           — UIManager with .log()
+   * @param {function}               ctx.selectObject
+   * @param {function}               ctx.frameAtDistance
+   * @param {function}               ctx.updateOutliner
    */
   constructor(ctx) {
-    if (!ctx || !ctx.scene) throw new Error('ModelIO requires ctx with a valid scene');
+    if (!ctx || !ctx.scene) {
+      throw new Error('ModelIO requires ctx with a valid THREE.Scene');
+    }
     this.ctx = ctx;
-
-    // Reuse a pre-created GLTFLoader (with Draco) if the engine already has one.
-    this._gltfLoader = ctx.gltfLoader || null;
-    this._loadersReady = false;
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  //  IMPORT — single entry point for all sources
+  //  IMPORT
   // ════════════════════════════════════════════════════════════════════════
 
   /**
-   * Import a model from any supported source.
+   * Import a model from File, URL string, or multi-file package.
    *
    * @param {File|string|{url:string, files?:Object, name?:string}} source
    * @param {Object} [opts]
-   * @param {function} [opts.onProgress] — (loaded, total) => void
-   * @param {boolean}  [opts.normalize=true] — run normalizeImport
-   * @param {boolean}  [opts.frame=true]     — frame camera after import
-   * @returns {Promise<THREE.Object3D>} — the imported wrapper/group
+   * @param {function} [opts.onProgress]  — (loaded, total) => void
+   * @param {boolean}  [opts.normalize=true]
+   * @param {boolean}  [opts.frame=true]
+   * @returns {Promise<THREE.Object3D>}
    */
   async importFile(source, opts = {}) {
-    await _ensureLoaders();
-    if (!this._gltfLoader) this._initGltfLoader();
+    const L = await _ensureLoaders();
 
     const { normalize = true, frame = true, onProgress } = opts;
-
-    // ── Detect format ──
     const name = this._resolveName(source);
     const ext = _ext(name);
 
-    // ── Route to format-specific importer ──
     let root;
+
+    // ── Route to format-specific importer ──
     try {
       if (_isGltfLike(ext)) {
         root = await this._importGLTF(source, name, onProgress);
@@ -159,26 +271,29 @@ export class ModelIO {
         // Multi-file glTF package (no extension, but has files map)
         root = await this._importGLTFMulti(source, onProgress);
       } else {
-        // Last-resort: try glTF parser (e.g. ArrayBuffer without name)
-        root = await this._tryParseGltf(source, name, onProgress);
+        // Last-resort: try parsing as glTF ArrayBuffer
+        root = await this._tryParseGltf(source, name);
       }
     } catch (err) {
-      const msg = `Import failed (${name}): ${err.message || err}`;
+      const msg = `Import failed for "${name}": ${err.message || err}`;
       this._log(msg, 'error');
       throw new Error(msg);
     }
 
-    // ── Ensure shadows on all meshes ──
+    if (!root) {
+      throw new Error(`Import returned empty result for "${name}"`);
+    }
+
+    // Ensure shadows on all meshes
     root.traverse(c => {
       if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
     });
 
-    // ── Normalize, add to scene, frame ──
     return this._finalizeImport(root, _baseName(name), { normalize, frame });
   }
 
   /**
-   * Import multiple files at once (batch).
+   * Import multiple files at once.
    * @param {FileList|File[]} files
    * @param {Object} [opts]
    * @returns {Promise<THREE.Object3D[]>}
@@ -190,11 +305,11 @@ export class ModelIO {
       try {
         const wrapper = await this.importFile(list[i], {
           ...opts,
-          frame: i === list.length - 1, // only frame on last file
+          frame: i === list.length - 1,
         });
         results.push(wrapper);
       } catch (err) {
-        dbg.warn(`[ModelIO] Batch import skipped ${list[i].name}: ${err.message}`);
+        dbg.warn(`[ModelIO] Batch skipped "${list[i].name}": ${err.message}`);
       }
     }
     if (results.length > 0) {
@@ -204,32 +319,30 @@ export class ModelIO {
   }
 
   /**
-   * Import from a URL string.
+   * Import from URL string.
    * @param {string} url
    * @param {Object} [opts]
    * @returns {Promise<THREE.Object3D>}
    */
   async importURL(url, opts = {}) {
-    const name = url.split('/').pop().split('?')[0];
-    return this.importFile(url, { ...opts, });
+    return this.importFile(url, opts);
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  //  EXPORT — single entry point for all formats
+  //  EXPORT
   // ════════════════════════════════════════════════════════════════════════
 
   /**
-   * Export an object (or whole scene) in the given format.
-   *
+   * Export an object (or scene) in the given format.
    * @param {'glb'|'gltf'|'obj'|'stl'|'ply'} format
    * @param {THREE.Object3D} [object] — defaults to selected or scene
    * @param {Object} [opts]
-   * @param {string}  [opts.filename] — custom download filename
-   * @param {boolean} [opts.download=true] — trigger download, or return blob
-   * @returns {Promise<Blob>} the exported blob
+   * @param {string}  [opts.filename]
+   * @param {boolean} [opts.download=true]
+   * @returns {Promise<Blob>}
    */
   async exportAs(format, object, opts = {}) {
-    await _ensureLoaders();
+    const L = await _ensureLoaders();
     const { filename, download = true } = opts;
 
     const obj = object || this._getSelectedOrScene();
@@ -241,20 +354,26 @@ export class ModelIO {
     let blob;
     switch (format) {
       case 'glb':
-        blob = await this._exportGLTF(obj, true);
+      case 'gltf': {
+        if (!L.GLTFExporter) throw new Error('GLTFExporter not available');
+        blob = await this._exportGLTF(obj, format === 'glb');
         break;
-      case 'gltf':
-        blob = await this._exportGLTF(obj, false);
-        break;
-      case 'obj':
+      }
+      case 'obj': {
+        if (!L.OBJExporter) throw new Error('OBJExporter not available');
         blob = this._exportOBJ(obj);
         break;
-      case 'stl':
+      }
+      case 'stl': {
+        if (!L.STLExporter) throw new Error('STLExporter not available');
         blob = this._exportSTL(obj);
         break;
-      case 'ply':
+      }
+      case 'ply': {
+        if (!L.PLYExporter) throw new Error('PLYExporter not available');
         blob = this._exportPLY(obj);
         break;
+      }
       default:
         throw new Error(`Unknown format: ${format}`);
     }
@@ -269,67 +388,67 @@ export class ModelIO {
     return blob;
   }
 
-  /**
-   * Get list of supported export format keys.
-   * @returns {string[]}
-   */
   getSupportedExportFormats() {
     return Array.from(EXPORT_FORMATS.keys());
   }
 
-  /**
-   * Get list of supported import extensions.
-   * @returns {string[]}
-   */
   getSupportedImportExtensions() {
     return Array.from(IMPORT_EXTENSIONS);
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  //  FORMAT-SPECIFIC IMPORTERS (private)
+  //  FORMAT-SPECIFIC IMPORTERS
   // ════════════════════════════════════════════════════════════════════════
 
-  /** Initialize the shared GLTFLoader with Draco support. */
-  _initGltfLoader() {
-    this._gltfLoader = new _GLTFLoader();
-    const draco = new _DRACOLoader();
-    draco.setDecoderPath(DRACO_PATH);
-    this._gltfLoader.setDRACOLoader(draco);
-  }
-
   /** Import GLTF/GLB from File or URL. */
-  _importGLTF(source, name, onProgress) {
-    if (!this._gltfLoader) throw new Error('GLTFLoader not available — initialization may have failed');
-    return new Promise((resolve, reject) => {
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          this._gltfLoader.parse(
-            e.target.result, '',
-            (gltf) => resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group()),
-            reject,
-          );
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsArrayBuffer(source);
-      } else if (typeof source === 'string') {
-        this._gltfLoader.load(
-          source,
+  async _importGLTF(source, name, onProgress) {
+
+    // File or Blob → read as ArrayBuffer → parse
+    if (source instanceof File || source instanceof Blob) {
+      const buf = await _readAs().arrayBuffer(source);
+      return new Promise((resolve, reject) => {
+        _loaders._sharedGltfLoader.parse(
+          buf, '',
           (gltf) => resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group()),
-          onProgress ? (e) => onProgress(e.loaded, e.total) : undefined,
           reject,
         );
-      } else if (source && source.url) {
-        // Multi-file package
-        return this._importGLTFMulti(source, onProgress).then(resolve, reject);
-      } else {
-        reject(new Error('Invalid GLTF source'));
-      }
-    });
+      });
+    }
+
+    // URL string → fetch → parse
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error(`Import timed out after ${URL_FETCH_TIMEOUT_MS / 1000}s: ${source}`));
+        }, URL_FETCH_TIMEOUT_MS);
+
+        _loaders._sharedGltfLoader.load(
+          source,
+          (gltf) => {
+            clearTimeout(timeout);
+            resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group());
+          },
+          onProgress ? (e) => onProgress(e.loaded, e.total) : undefined,
+          (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          },
+        );
+      });
+    }
+
+    // Multi-file package
+    if (source && source.url) {
+      return this._importGLTFMulti(source, onProgress);
+    }
+
+    throw new Error(`Invalid GLTF source: ${typeof source}`);
   }
 
-  /** Import multi-file glTF package with URLModifier. */
-  _importGLTFMulti(pkg, onProgress) {
+  /** Import a multi-file glTF package (.gltf + .bin + textures). */
+  async _importGLTFMulti(pkg, onProgress) {
+    const L = await _ensureLoaders();
+
     return new Promise((resolve, reject) => {
       const manager = new THREE.LoadingManager();
       manager.setURLModifier((url) => {
@@ -341,186 +460,225 @@ export class ModelIO {
         return url;
       });
 
-      const loader = new _GLTFLoader(manager);
-      // Reuse Draco config from the shared loader if available, else create new
-      if (this._gltfLoader && this._gltfLoader.dracoLoader) {
-        loader.setDRACOLoader(this._gltfLoader.dracoLoader);
-      } else if (_DRACOLoader) {
-        const draco = new _DRACOLoader();
-        draco.setDecoderPath(DRACO_PATH);
+      const loader = new L.GLTFLoader(manager);
+      if (L.DRACOLoader) {
+        const draco = new L.DRACOLoader();
+        draco.setDecoderPath(DRACO_DECODER_PATH);
         loader.setDRACOLoader(draco);
       }
 
       const revokeAll = () => {
-        if (pkg.files) Object.values(pkg.files).forEach(u => { try { URL.revokeObjectURL(u); } catch {} });
+        if (pkg.files) {
+          Object.values(pkg.files).forEach(u => {
+            try { URL.revokeObjectURL(u); } catch (_) {}
+          });
+        }
       };
 
       loader.load(
         pkg.url,
         (gltf) => {
-          const root = gltf.scene || gltf.scenes?.[0] || new THREE.Group();
           revokeAll();
-          resolve(root);
+          resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group());
         },
         onProgress ? (e) => onProgress(e.loaded, e.total) : undefined,
-        (err) => { revokeAll(); reject(err); },
+        (err) => {
+          revokeAll();
+          reject(err);
+        },
       );
     });
   }
 
   /** Import OBJ from File or URL. */
-  _importOBJ(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      const loader = new _OBJLoader();
-      const finish = (text) => {
-        try {
-          const group = loader.parse(text);
-          resolve(group);
-        } catch (err) { reject(err); }
-      };
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => finish(e.target.result);
-        reader.onerror = () => reject(new Error('Failed to read OBJ file'));
-        reader.readAsText(source);
-      } else if (typeof source === 'string') {
-        loader.load(source, resolve, onProgress ? (e) => onProgress(e.loaded, e.total) : undefined, reject);
-      } else {
-        reject(new Error('Invalid OBJ source'));
-      }
-    });
+  async _importOBJ(source, name, _onProgress) {
+    const L = await _ensureLoaders();
+    if (!L.OBJLoader) throw new Error('OBJLoader not available');
+
+    if (source instanceof File || source instanceof Blob) {
+      const text = await _readAs().text(source);
+      const loader = new L.OBJLoader();
+      return loader.parse(text);
+    }
+
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const loader = new L.OBJLoader();
+        loader.load(source, resolve, undefined, reject);
+      });
+    }
+
+    throw new Error('Invalid OBJ source');
   }
 
-  /** Import STL from File or URL. Returns a Mesh (not a Group). */
-  _importSTL(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      const loader = new _STLLoader();
-      const finish = (geom) => {
-        const mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.5 });
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.name = _baseName(name);
-        const group = new THREE.Group();
-        group.add(mesh);
-        group.name = mesh.name;
-        resolve(group);
-      };
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try { finish(loader.parse(e.target.result)); }
-          catch (err) { reject(err); }
-        };
-        reader.onerror = () => reject(new Error('Failed to read STL file'));
-        reader.readAsArrayBuffer(source);
-      } else if (typeof source === 'string') {
-        loader.load(source, finish, onProgress ? (e) => onProgress(e.loaded, e.total) : undefined, reject);
-      } else {
-        reject(new Error('Invalid STL source'));
-      }
-    });
+  /** Import STL from File or URL. Returns a Mesh wrapped in a Group. */
+  async _importSTL(source, name, _onProgress) {
+    const L = await _ensureLoaders();
+    if (!L.STLLoader) throw new Error('STLLoader not available');
+
+    const finish = (geom) => {
+      const mat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.5 });
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = _baseName(name);
+      const group = new THREE.Group();
+      group.add(mesh);
+      group.name = mesh.name;
+      return group;
+    };
+
+    if (source instanceof File || source instanceof Blob) {
+      const buf = await _readAs().arrayBuffer(source);
+      const loader = new L.STLLoader();
+      return finish(loader.parse(buf));
+    }
+
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const loader = new L.STLLoader();
+        loader.load(source, (geom) => resolve(finish(geom)), undefined, reject);
+      });
+    }
+
+    throw new Error('Invalid STL source');
   }
 
-  /** Import PLY from File or URL. Returns a Mesh wrapped in a Group. */
-  _importPLY(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      const loader = new _PLYLoader();
-      const finish = (geom) => {
-        geom.computeVertexNormals();
-        const hasColor = geom.hasAttribute('color');
-        const mat = new THREE.MeshStandardMaterial({
-          color: hasColor ? 0xffffff : 0xaaaaaa,
-          vertexColors: hasColor,
-          roughness: 0.5,
-        });
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.name = _baseName(name);
-        const group = new THREE.Group();
-        group.add(mesh);
-        group.name = mesh.name;
-        resolve(group);
-      };
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try { finish(loader.parse(e.target.result)); }
-          catch (err) { reject(err); }
-        };
-        reader.onerror = () => reject(new Error('Failed to read PLY file'));
-        reader.readAsArrayBuffer(source);
-      } else if (typeof source === 'string') {
-        loader.load(source, finish, onProgress ? (e) => onProgress(e.loaded, e.total) : undefined, reject);
-      } else {
-        reject(new Error('Invalid PLY source'));
-      }
-    });
+  /** Import PLY from File or URL. */
+  async _importPLY(source, name, _onProgress) {
+    const L = await _ensureLoaders();
+    if (!L.PLYLoader) throw new Error('PLYLoader not available');
+
+    const finish = (geom) => {
+      geom.computeVertexNormals();
+      const hasColor = geom.hasAttribute('color');
+      const mat = new THREE.MeshStandardMaterial({
+        vertexColors: hasColor,
+        roughness: 0.5,
+      });
+      if (!hasColor) mat.color.set(0xaaaaaa);
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.name = _baseName(name);
+      const group = new THREE.Group();
+      group.add(mesh);
+      group.name = mesh.name;
+      return group;
+    };
+
+    if (source instanceof File || source instanceof Blob) {
+      const buf = await _readAs().arrayBuffer(source);
+      const loader = new L.PLYLoader();
+      return finish(loader.parse(buf));
+    }
+
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const loader = new L.PLYLoader();
+        loader.load(source, (geom) => resolve(finish(geom)), undefined, reject);
+      });
+    }
+
+    throw new Error('Invalid PLY source');
   }
 
   /** Import FBX from File or URL. */
-  _importFBX(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      const loader = new _FBXLoader();
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try { resolve(loader.parse(e.target.result, '')); }
-          catch (err) { reject(err); }
-        };
-        reader.onerror = () => reject(new Error('Failed to read FBX file'));
-        reader.readAsArrayBuffer(source);
-      } else if (typeof source === 'string') {
-        loader.load(source, resolve, onProgress ? (e) => onProgress(e.loaded, e.total) : undefined, reject);
-      } else {
-        reject(new Error('Invalid FBX source'));
+  async _importFBX(source, name, _onProgress) {
+    const L = await _ensureLoaders();
+    if (!L.FBXLoader) throw new Error('FBXLoader not available');
+
+    const finish = (fbxResult) => {
+      const group = new THREE.Group();
+      group.name = _baseName(name);
+
+      if (!fbxResult) return group;
+
+      // Transfer scene-level transforms
+      if (fbxResult.position) group.position.copy(fbxResult.position);
+      if (fbxResult.rotation) group.rotation.copy(fbxResult.rotation);
+      if (fbxResult.scale) group.scale.copy(fbxResult.scale);
+
+      // Move children from the FBX result into our wrapper group
+      const children = [...(fbxResult.children || [])];
+      for (const child of children) {
+        group.add(child);
       }
-    });
+
+      return group;
+    };
+
+    if (source instanceof File || source instanceof Blob) {
+      const buf = await _readAs().arrayBuffer(source);
+      const loader = new L.FBXLoader();
+      return finish(loader.parse(buf, ''));
+    }
+
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const loader = new L.FBXLoader();
+        loader.load(source, (result) => resolve(finish(result)), undefined, reject);
+      });
+    }
+
+    throw new Error('Invalid FBX source');
   }
 
   /** Import Collada/DAE from File or URL. */
-  _importCollada(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      const loader = new _ColladaLoader();
-      const finish = (collada) => resolve(collada.scene);
-      if (source instanceof File || source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          try { finish(loader.parse(e.target.result)); }
-          catch (err) { reject(err); }
-        };
-        reader.onerror = () => reject(new Error('Failed to read DAE file'));
-        reader.readAsText(source);
-      } else if (typeof source === 'string') {
-        loader.load(source, finish, onProgress ? (e) => onProgress(e.loaded, e.total) : undefined, reject);
-      } else {
-        reject(new Error('Invalid Collada source'));
+  async _importCollada(source, name, _onProgress) {
+    const L = await _ensureLoaders();
+    if (!L.ColladaLoader) throw new Error('ColladaLoader not available');
+
+    const finish = (collada) => {
+      const group = new THREE.Group();
+      group.name = _baseName(name);
+
+      if (!collada || !collada.scene) return group;
+
+      // Transfer children
+      const children = [...(collada.scene.children || [])];
+      for (const child of children) {
+        group.add(child);
       }
-    });
+
+      // Transfer scene properties
+      if (collada.scene.position) group.position.copy(collada.scene.position);
+      if (collada.scene.rotation) group.rotation.copy(collada.scene.rotation);
+      if (collada.scene.scale) group.scale.copy(collada.scene.scale);
+
+      return group;
+    };
+
+    if (source instanceof File || source instanceof Blob) {
+      const text = await _readAs().text(source);
+      const loader = new L.ColladaLoader();
+      return finish(loader.parse(text));
+    }
+
+    if (typeof source === 'string') {
+      return new Promise((resolve, reject) => {
+        const loader = new L.ColladaLoader();
+        loader.load(source, (result) => resolve(finish(result)), undefined, reject);
+      });
+    }
+
+    throw new Error('Invalid Collada source');
   }
 
-  /** Try to parse unknown source as glTF (last-resort for ArrayBuffers/Blobs). */
-  _tryParseGltf(source, name, onProgress) {
-    return new Promise((resolve, reject) => {
-      if (source instanceof ArrayBuffer) {
-        // Already ArrayBuffer — parse directly
-        this._gltfLoader.parse(
-          source, '',
+  /** Try to parse unknown source as glTF (last-resort for ArrayBuffers). */
+  async _tryParseGltf(source, name) {
+
+    if (source instanceof ArrayBuffer || source instanceof Blob) {
+      const buf = source instanceof Blob
+        ? await _readAs().arrayBuffer(source)
+        : source;
+
+      return new Promise((resolve, reject) => {
+        _loaders._sharedGltfLoader.parse(
+          buf, '',
           (gltf) => resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group()),
-          () => reject(new Error(`Unsupported format: ${name}`)),
+          () => reject(new Error(`Cannot parse "${name}" — unsupported format`)),
         );
-      } else if (source instanceof Blob) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          this._gltfLoader.parse(
-            e.target.result, '',
-            (gltf) => resolve(gltf.scene || gltf.scenes?.[0] || new THREE.Group()),
-            () => reject(new Error(`Unsupported format: ${name}`)),
-          );
-        };
-        reader.onerror = () => reject(new Error(`Failed to read blob for: ${name}`));
-        reader.readAsArrayBuffer(source);
-      } else {
-        reject(new Error(`Cannot determine format for: ${name}`));
-      }
-    });
+      });
+    }
+
+    throw new Error(`Cannot determine format for: ${name}`);
   }
 
   /** Import .k3dasset bundle. */
@@ -528,7 +686,7 @@ export class ModelIO {
     let bundle;
 
     if (source instanceof File || source instanceof Blob) {
-      const text = await this._readFileAsText(source);
+      const text = await _readAs().text(source);
       bundle = JSON.parse(text);
     } else if (typeof source === 'string') {
       const resp = await fetch(source);
@@ -562,12 +720,15 @@ export class ModelIO {
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  //  FORMAT-SPECIFIC EXPORTERS (private)
+  //  FORMAT-SPECIFIC EXPORTERS
   // ════════════════════════════════════════════════════════════════════════
 
   _exportGLTF(object, binary) {
+    const L = _loaders;
+    if (!L || !L.GLTFExporter) throw new Error('GLTFExporter not available');
+
     return new Promise((resolve, reject) => {
-      const exporter = new _ThreeGLTFExporter();
+      const exporter = new L.GLTFExporter();
       exporter.parse(
         object,
         (result) => {
@@ -584,40 +745,38 @@ export class ModelIO {
   }
 
   _exportOBJ(object) {
-    const exporter = new _OBJExporter();
+    const L = _loaders;
+    if (!L || !L.OBJExporter) throw new Error('OBJExporter not available');
+    const exporter = new L.OBJExporter();
     const data = exporter.parse(object);
     return new Blob([data], { type: 'text/plain' });
   }
 
   _exportSTL(object) {
-    const exporter = new _STLExporter();
+    const L = _loaders;
+    if (!L || !L.STLExporter) throw new Error('STLExporter not available');
+    const exporter = new L.STLExporter();
     const data = exporter.parse(object, { binary: true });
     return new Blob([data], { type: 'application/sla' });
   }
 
   _exportPLY(object) {
-    const exporter = new _PLYExporter();
+    const L = _loaders;
+    if (!L || !L.PLYExporter) throw new Error('PLYExporter not available');
+    const exporter = new L.PLYExporter();
     const data = exporter.parse(object, { binary: true });
     return new Blob([data], { type: 'application/octet-stream' });
   }
 
   // ════════════════════════════════════════════════════════════════════════
-  //  SCENE INTEGRATION HELPERS (private)
+  //  SCENE INTEGRATION
   // ════════════════════════════════════════════════════════════════════════
 
-  /**
-   * Normalize, add to scene, select, frame, log, emit.
-   * @param {THREE.Object3D} root
-   * @param {string} name
-   * @param {Object} opts
-   * @returns {THREE.Object3D} wrapper
-   */
   _finalizeImport(root, name, opts = {}) {
     const { normalize = true, frame = true } = opts;
     const ctx = this.ctx;
 
     root.name = name;
-
     let wrapper = root;
     let normResult = null;
 
@@ -646,7 +805,7 @@ export class ModelIO {
       ctx.selectObject(wrapper);
     }
 
-    // Frame
+    // Frame camera
     if (frame && typeof ctx.frameAtDistance === 'function') {
       const target = normResult
         ? new THREE.Vector3(0, normResult.bboxCenter.y, 0)
@@ -671,7 +830,6 @@ export class ModelIO {
     return wrapper;
   }
 
-  /** Resolve name hint from various source types. */
   _resolveName(source) {
     if (source instanceof File) return source.name;
     if (typeof source === 'string') return source.split('/').pop().split('?')[0];
@@ -680,20 +838,19 @@ export class ModelIO {
     return 'model';
   }
 
-  /** Get the selected object or the whole scene for export. */
   _getSelectedOrScene() {
     const ctx = this.ctx;
     if (ctx.selectedObject) return ctx.selectedObject;
     return ctx.scene;
   }
 
-  // ── k3dasset helpers (shared) ──
+  // ── k3dasset helpers ──
 
   _itemToMesh(item) {
     if (!item || item.type !== 'mesh') return null;
 
     let geometry = null;
-    if (item.geometry?.parameters) {
+    if (item.geometry && item.geometry.parameters) {
       geometry = this._parametricGeometry(item.geometry.parameters);
     }
     if (!geometry) geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -709,13 +866,32 @@ export class ModelIO {
         });
       }
     }
-    if (!material) material = new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.3, metalness: 0.1 });
+    if (!material) {
+      material = new THREE.MeshStandardMaterial({
+        color: 0x60a5fa, roughness: 0.3, metalness: 0.1,
+      });
+    }
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = item.name || 'Asset Part';
-    if (item.position) mesh.position.fromArray(item.position);
-    if (item.rotation) mesh.rotation.fromArray(item.rotation);
-    if (item.scale) mesh.scale.fromArray(item.scale);
+
+    // Support both transform.position (k3dasset schema) and legacy position
+    if (item.transform && item.transform.position) {
+      mesh.position.fromArray(item.transform.position);
+    } else if (item.position) {
+      mesh.position.fromArray(item.position);
+    }
+    if (item.transform && item.transform.rotation) {
+      mesh.rotation.fromArray(item.transform.rotation);
+    } else if (item.rotation) {
+      mesh.rotation.fromArray(item.rotation);
+    }
+    if (item.transform && item.transform.scale) {
+      mesh.scale.fromArray(item.transform.scale);
+    } else if (item.scale) {
+      mesh.scale.fromArray(item.scale);
+    }
+
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     return mesh;
@@ -724,24 +900,26 @@ export class ModelIO {
   _parametricGeometry(p) {
     if (!p) return null;
     try {
-      if (p.radiusTop !== undefined) return new THREE.CylinderGeometry(p.radiusTop, p.radiusBottom ?? p.radiusTop, p.height ?? 1, p.radialSegments ?? 16);
-      if (p.radius !== undefined) return new THREE.SphereGeometry(p.radius, p.widthSegments ?? 24, p.heightSegments ?? 18);
-      if (p.width !== undefined && p.height !== undefined && p.depth !== undefined) return new THREE.BoxGeometry(p.width, p.height, p.depth);
-      if (p.width !== undefined && p.height !== undefined) return new THREE.PlaneGeometry(p.width, p.height);
-    } catch {}
+      if (p.radiusTop !== undefined) {
+        return new THREE.CylinderGeometry(
+          p.radiusTop, p.radiusBottom ?? p.radiusTop,
+          p.height ?? 1, p.radialSegments ?? 16,
+        );
+      }
+      if (p.radius !== undefined) {
+        return new THREE.SphereGeometry(p.radius, p.widthSegments ?? 24, p.heightSegments ?? 18);
+      }
+      if (p.width !== undefined && p.height !== undefined && p.depth !== undefined) {
+        return new THREE.BoxGeometry(p.width, p.height, p.depth);
+      }
+      if (p.width !== undefined && p.height !== undefined) {
+        return new THREE.PlaneGeometry(p.width, p.height);
+      }
+    } catch (_) {}
     return null;
   }
 
   // ── Utility ──
-
-  _readFileAsText(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsText(file);
-    });
-  }
 
   _downloadBlob(blob, filename) {
     const a = document.createElement('a');
@@ -769,4 +947,20 @@ export class ModelIO {
       ctx.pluginRegistry.emit(hook, data);
     }
   }
+}
+
+// ── Singleton ──────────────────────────────────────────────────────────────
+
+let _singleton = null;
+
+/**
+ * Get or create the singleton ModelIO instance.
+ * @param {Object} ctx — same as constructor
+ * @returns {Promise<ModelIO>}
+ */
+export async function getModelIO(ctx) {
+  if (_singleton) return _singleton;
+  await _ensureLoaders();
+  _singleton = new ModelIO(ctx);
+  return _singleton;
 }

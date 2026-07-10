@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';import { safeGetColor, safeCopyColor, safeSetHex, safeSetEmissive } from './material-helpers.js';
+import { safeGetColor, safeCopyColor, safeSetHex, safeSetEmissive } from './material-helpers.js';
 import JSZip from 'jszip';
 import { dbg } from './dbg.js';
 import { state } from './state.js';
@@ -118,10 +117,7 @@ class ProModelerStudio {
         this.isTransforming = false;
         this.lastTransformEnd = 0;
         
-        this.gltfLoader = new GLTFLoader();
-        const draco = new DRACOLoader();
-        draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-        this.gltfLoader.setDRACOLoader(draco);
+        this.modelIO = null; // Initialized in initializeImportExport()
         this.modelIO = null; // Initialized in initializeImportExport()
         
         this.finishInit();
@@ -529,7 +525,6 @@ class ProModelerStudio {
                 selectObject: (obj) => self.selectObject(obj),
                 frameAtDistance: (t, d, e, a) => self.frameAtDistance(t, d, e, a),
                 updateOutliner: () => self.ui.updateOutliner(),
-                gltfLoader: self.gltfLoader,
             });
             // Keep selectedObject reference live
             Object.defineProperty(self.modelIO.ctx, 'selectedObject', {
@@ -574,24 +569,6 @@ class ProModelerStudio {
         if (this.modelIO) return this.modelIO.importFile(file);
         throw new Error('ModelIO not initialized');
     }
-    async importGLTFMulti(pkg) {
-        if (this.modelIO) return this.modelIO.importFile(pkg);
-        throw new Error('ModelIO not initialized');
-    }
-    async exportGLTF(object, binary) {
-        if (this.modelIO) return this.modelIO.exportAs(binary ? 'glb' : 'gltf', object);
-        throw new Error('ModelIO not initialized');
-    }
-    async exportOBJ(object) {
-        if (this.modelIO) return this.modelIO.exportAs('obj', object);
-        throw new Error('ModelIO not initialized');
-    }
-    async exportSTL(object) {
-        if (this.modelIO) return this.modelIO.exportAs('stl', object);
-        throw new Error('ModelIO not initialized');
-    }
-
-    initializeAdvancedLighting() {
         const self = this;
         this.advancedLighting = {
             /**

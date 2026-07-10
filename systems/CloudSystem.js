@@ -8,52 +8,7 @@ let _stlLoader = null;
 let _plyLoader = null;
 let _fbxLoader = null;
 
-async function _getLoader(format) {
-  switch (format) {
-    case 'gltf':
-    case 'glb': {
-      if (!_gltfLoader) {
-        const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
-        const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
-        _gltfLoader = new GLTFLoader();
-        const draco = new DRACOLoader();
-        draco.setDecoderPath(DRACO_DECODER_URL);
-        _gltfLoader.setDRACOLoader(draco);
-      }
-      return _gltfLoader;
-    }
-    case 'obj': {
-      if (!_objLoader) {
-        const { OBJLoader } = await import('three/addons/loaders/OBJLoader.js');
-        _objLoader = new OBJLoader();
-      }
-      return _objLoader;
-    }
-    case 'stl': {
-      if (!_stlLoader) {
-        const { STLLoader } = await import('three/addons/loaders/STLLoader.js');
-        _stlLoader = new STLLoader();
-      }
-      return _stlLoader;
-    }
-    case 'ply': {
-      if (!_plyLoader) {
-        const { PLYLoader } = await import('three/addons/loaders/PLYLoader.js');
-        _plyLoader = new PLYLoader();
-      }
-      return _plyLoader;
-    }
-    case 'fbx': {
-      if (!_fbxLoader) {
-        const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js');
-        _fbxLoader = new FBXLoader();
-      }
-      return _fbxLoader;
-    }
-    default:
-      return null;
-  }
-}
+
 
 /**
  * Supported 3D file formats for Puter FS import.
@@ -69,7 +24,6 @@ const SUPPORTED_FORMATS = [
 ];
 
 /** DRACO decoder version for compressed glTF — bump when Three.js bundle updates */
-const DRACO_DECODER_URL = 'https://www.gstatic.com/draco/versioned/decoders/1.5.6/';
 
 // ── KV key for asset catalog ──
 const KV_CATALOG_KEY = 'cloud_asset_catalog';
@@ -259,29 +213,80 @@ export class CloudSystem {
                 }
             } catch (_) { /* Not found at canonical path — try fallbacks */ }
 
-            // 1b. Try legacy flat paths: native 3D formats (glTF/GLB/OBJ/STL/PLY/FBX)
-            for (const fmt of SUPPORTED_FORMATS) {
-                const fsPath = `CloudAssets/${asset.id}.${fmt.ext}`;
-                try {
-                    const file = await fs.read(fsPath);
-                    if (file && file.size > 0) {
-                        dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(file.size / 1024).toFixed(1)} KB) at ${fsPath}`);
-                        const imported = await this._importModelAsset(asset, fsPath, fmt.type, file);
-                        if (imported) return asset;
+            // 1b. Try legacy flat paths: use readdir when available,
+            //     fall back to sequential format probes when it's not.
+            let readdirMatched = false;
+            const entries = await fs.readdir('CloudAssets');
+            if (entries && entries.length > 0) {
+                const prefix = asset.id + '.';
+                // Collect all files matching "{assetId}.*", then sort by
+                // preference so we try supported formats before fallbacks.
+                const matches = entries.filter(e => e.name && e.name.startsWith(prefix));
+                if (matches.length > 0) {
+                    readdirMatched = true;
+                    // Sort: known 3D formats first, then JSON, then unknown.
+                    matches.sort((a, b) => {
+                        const extA = a.name.slice(prefix.length);
+                        const extB = b.name.slice(prefix.length);
+                        const rankA = SUPPORTED_FORMATS.find(f => f.ext === extA) ? 0 : (extA === 'json' ? 1 : 2);
+                        const rankB = SUPPORTED_FORMATS.find(f => f.ext === extB) ? 0 : (extB === 'json' ? 1 : 2);
+                        return rankA - rankB;
+                    });
+
+                    for (const match of matches) {
+                        const ext = match.name.slice(prefix.length);
+                        const fmt = SUPPORTED_FORMATS.find(f => f.ext === ext);
+                        if (fmt) {
+                            const fsPath = `CloudAssets/${match.name}`;
+                            try {
+                                const file = await fs.read(fsPath);
+                                if (file && file.size > 0) {
+                                    dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(file.size / 1024).toFixed(1)} KB) at ${fsPath}`);
+                                    const imported = await this._importModelAsset(asset, fsPath, fmt.type, file);
+                                    if (imported) return asset;
+                                }
+                            } catch (_) { /* Read failed — try next match */ }
+                        } else if (ext === 'json') {
+                            const fsPath = `CloudAssets/${match.name}`;
+                            try {
+                                const raw = await fs.readText(fsPath);
+                                if (raw) {
+                                    const assetData = JSON.parse(raw);
+                                    await this._importPuterAsset(asset, assetData);
+                                    return asset;
+                                }
+                            } catch (_) { /* Parse failed — try next match */ }
+                        }
                     }
-                } catch (_) { /* Not found */ }
+                }
             }
 
-            // 1c. Fall back to flat JSON parametric data
-            const legacyJsonPath = `CloudAssets/${asset.id}.json`;
-            try {
-                const raw = await fs.readText(legacyJsonPath);
-                if (raw) {
-                    const assetData = JSON.parse(raw);
-                    await this._importPuterAsset(asset, assetData);
-                    return asset;
+            // Fallback: readdir was unavailable, empty, or found no matching
+            // files — probe known format paths sequentially (up to 7 reads).
+            if (!readdirMatched) {
+                for (const fmt of SUPPORTED_FORMATS) {
+                    const fsPath = `CloudAssets/${asset.id}.${fmt.ext}`;
+                    try {
+                        const file = await fs.read(fsPath);
+                        if (file && file.size > 0) {
+                            dbg.log(`[CloudSystem] Found ${fmt.ext} asset (${(file.size / 1024).toFixed(1)} KB) at ${fsPath}`);
+                            const imported = await this._importModelAsset(asset, fsPath, fmt.type, file);
+                            if (imported) return asset;
+                        }
+                    } catch (_) { /* Not found — try next format */ }
                 }
-            } catch (_) { /* No FS data — fall through to generator */ }
+
+                // Legacy JSON fallback
+                const legacyJsonPath = `CloudAssets/${asset.id}.json`;
+                try {
+                    const raw = await fs.readText(legacyJsonPath);
+                    if (raw) {
+                        const assetData = JSON.parse(raw);
+                        await this._importPuterAsset(asset, assetData);
+                        return asset;
+                    }
+                } catch (_) { /* No FS asset found — fall through to generator */ }
+            }
         }
 
         // 2. Fall back to local procedural generation (original mock behaviour)
@@ -340,117 +345,17 @@ export class CloudSystem {
             }
 
             // ── Resolve the appropriate loader ──
-            const loader = await _getLoader(format);
-            if (!loader) {
-                dbg.warn('[CloudSystem] No loader for format:', format);
-                return false;
-            }
+            const modelIO = this.studio.modelIO || (window.ProModelerApp && window.ProModelerApp.modelIO);
+            
 
             // ── Parse: create an object URL and load it ──
-            const url = URL.createObjectURL(blob);
-            let object;
-
-            try {
-                if (format === 'gltf' || format === 'glb') {
-                    const gltfResult = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
-                    });
-                    object = gltfResult.scene || gltfResult;
-                } else if (format === 'obj') {
-                    object = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
-                    });
-                } else if (format === 'stl') {
-                    // STLLoader returns a BufferGeometry
-                    const geometry = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
-                    });
-                    const mat = new THREE.MeshStandardMaterial({
-                        color: 0xaaaaaa,
-                        roughness: 0.5,
-                        metalness: 0.3,
-                    });
-                    object = new THREE.Mesh(geometry, mat);
-                    object.castShadow = true;
-                    object.receiveShadow = true;
-                } else if (format === 'ply') {
-                    const geometry = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
-                    });
-                    const mat = new THREE.MeshStandardMaterial({
-                        color: 0xcccccc,
-                        roughness: 0.4,
-                        metalness: 0.2,
-                    });
-                    object = new THREE.Mesh(geometry, mat);
-                    object.castShadow = true;
-                    object.receiveShadow = true;
-                } else if (format === 'fbx') {
-                    object = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
-                    });
-                } else {
-                    URL.revokeObjectURL(url);
-                    return false;
-                }
-            } finally {
-                URL.revokeObjectURL(url);
-            }
-
-            if (!object) {
-                dbg.warn('[CloudSystem] Loader returned no object for', fsPath);
-                return false;
-            }
-
-            // ── Prepare the imported object ──
-            object.name = asset.name || format.toUpperCase() + ' Asset';
-            object.userData = {
-                ...object.userData,
-                importedFrom: fsPath,
-                importedFormat: format,
-                importedAssetId: asset.id,
-                importedAt: Date.now(),
-            };
-
-            // Compute total triangle count for status
-            let triCount = 0;
-            object.traverse((child) => {
-                if (child.isMesh && child.geometry) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                    const pos = child.geometry.attributes.position;
-                    if (pos) {
-                        triCount += pos.count / 3;
-                    }
-                }
-            });
-
-            // Auto-fit oversized models
-            const box = new THREE.Box3().setFromObject(object);
-            const size = box.getSize(new THREE.Vector3());
-            const diag = size.length();
-            if (diag > 20) {
-                const scale = 10 / diag;
-                object.scale.setScalar(scale);
-                dbg.log(`[CloudSystem] Scaled imported asset by ${scale.toFixed(3)} (was ${diag.toFixed(1)} units)`);
-            } else if (diag < 0.1) {
-                const scale = 2 / diag;
-                object.scale.setScalar(scale);
-            }
-
-            // ── Add to scene ──
-            this.studio.scene.add(object);
-            this.studio.objects.push(object);
-            this.studio.selectObject(object);
-            this.studio.frameSelected();
-            this.studio.ui.updateOutliner();
-
-            const fmtLabel = format.toUpperCase();
-            this.studio.ui.log(`Imported "${object.name}" (${fmtLabel}, ${triCount.toLocaleString()} tris)`, 'success');
-            dbg.log(`[CloudSystem] Imported ${format} asset: ${object.name} (${triCount} tris)`);
-            return true;
-
-        } catch (e) {
+      let object;
+      try {
+        object = await modelIO.importFile(blob, { frame: false, normalize: false });
+      } catch (e) {
+        dbg.warn("[CloudSystem] ModelIO import failed:", e.message);
+        return false;
+      } catch (e) {
             dbg.warn(`[CloudSystem] Failed to import ${format} asset ${fsPath}:`, e);
             if (this.studio.ui?.log) {
                 this.studio.ui.log(`Failed to load ${asset.name}: ${e.message}`, 'error');

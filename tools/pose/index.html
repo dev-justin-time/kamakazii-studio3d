@@ -9,6 +9,13 @@
 </head>
 <body>
     <button id="open-customize-panel" class="open-panel-btn" style="display: none;">Show Customize</button>
+    <button id="open-history-panel" class="open-panel-btn" style="position: absolute; top: 20px; left: 20px; z-index: 9;">History</button>
+    <div id="import-history-panel" class="floating-panel" style="display: none;">
+        <button id="close-history-panel" class="panel-toggle-btn">&times;</button>
+        <h3>Import History</h3>
+        <ul id="import-history-list"></ul>
+        <button id="clear-history-button" style="margin-top: 8px;">Clear History</button>
+    </div>
     <div id="customization-panel">
         <button id="close-customize-panel" class="panel-toggle-btn">&times;</button>
         <h3>Customize</h3>
@@ -177,8 +184,10 @@
 
         <!-- Model import UI -->
         <label for="import-model-input" style="display:none;">Import Model</label>
-        <input type="file" id="import-model-input" accept=".glb,.gltf,.obj" style="display: none;">
-        <button id="import-model-button" title="Import model (.glb .gltf .obj)">Import Model</button>
+        <input type="file" id="import-model-input" accept=".glb,.gltf,.obj,.stl,.ply,.fbx" multiple style="display: none;">
+        <button id="import-model-button" title="Import model (.glb .gltf .obj .stl .ply .fbx)">Import Model</button>
+        <button id="assemble-model-button" title="Combine all imported models into one group" style="display:none;">Assemble</button>
+        <button id="toggle-originals-button" title="Show/hide original individual models" style="display:none;">Hide Originals</button>
         <button id="remove-imported-model-button" title="Remove imported model" style="display:none;">Remove Model</button>
 
         <div class="speed-control-group">

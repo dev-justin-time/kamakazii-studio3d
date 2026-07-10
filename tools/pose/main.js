@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 // Import normalisation: scales + floor-aligns + centres + yaws imported models
 // so they land on the floor at a sensible size facing the camera, with the
@@ -17,8 +14,8 @@ import './animation_tools.js';
 import './physics_bridge.js';
 import './vr_support.js';
 
-// Additional refactor/topic placeholders added for future structure and wiring:
-import './maim.js';
+// Model Assembly & Import Manager — ModelIO integration, validation, assembly, history
+import { validateModel, assembleModel, getImportHistory, clearImportHistory } from './maim.js';
 import './roundbox.js';
 import './lighting_presets.js';
 import './physics_integration.js';
@@ -84,7 +81,16 @@ const cancelJsonImportButton = document.getElementById('cancel-json-import-butto
 // Model import UI elements
 const importModelInput = document.getElementById('import-model-input');
 const importModelButton = document.getElementById('import-model-button');
+const assembleModelButton = document.getElementById('assemble-model-button');
+const toggleOriginalsButton = document.getElementById('toggle-originals-button');
 const removeImportedModelButton = document.getElementById('remove-imported-model-button');
+
+// Import history UI elements
+const historyPanel = document.getElementById('import-history-panel');
+const historyList = document.getElementById('import-history-list');
+const openHistoryPanelBtn = document.getElementById('open-history-panel');
+const closeHistoryPanelBtn = document.getElementById('close-history-panel');
+const clearHistoryBtn = document.getElementById('clear-history-button');
 
 // Customization UI elements
 const bodyColorInput = document.getElementById('body-color');
@@ -288,19 +294,31 @@ function init() {
     importModelButton.addEventListener('click', () => importModelInput.click());
     importModelInput.addEventListener('change', async (e) => {
         if (!e.target.files || e.target.files.length === 0) return;
-        await loadModelFromFile(e.target.files[0]);
-        // clear input so same file can be reselected later
+        // Clear previous imports before loading new batch
+        clearImportedModels();
+        for (const file of e.target.files) {
+            await loadModelFromFile(file);
+        }
+        updateAssembleButton();
         importModelInput.value = '';
     });
+    assembleModelButton.addEventListener('click', onAssembleModels);
+    toggleOriginalsButton.addEventListener('click', toggleOriginalsVisibility);
+    openHistoryPanelBtn.addEventListener('click', () => {
+        refreshHistoryPanel();
+        historyPanel.style.display = 'flex';
+        openHistoryPanelBtn.style.display = 'none';
+    });
+    closeHistoryPanelBtn.addEventListener('click', () => {
+        historyPanel.style.display = 'none';
+        openHistoryPanelBtn.style.display = 'block';
+    });
+    clearHistoryBtn.addEventListener('click', () => {
+        clearImportHistory();
+        refreshHistoryPanel();
+    });
     removeImportedModelButton.addEventListener('click', () => {
-        // Remove any imported model group kept on scene.userData.importedModel
-        const imported = scene.userData.importedModel;
-        if (imported) {
-            scene.remove(imported);
-            disposeHierarchy(imported);
-            scene.userData.importedModel = null;
-            removeImportedModelButton.style.display = 'none';
-        }
+        clearImportedModels();
     });
     animationPromptInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
@@ -510,7 +528,7 @@ function toggleAudio() {
 }
 
 // --- Export Function ---
-function exportToGLB() {
+async function exportToGLB() {
     if (!humanoidModel) {
         alert("No model to export.");
         return;
@@ -521,6 +539,7 @@ function exportToGLB() {
         }
     }
 
+    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
     const exporter = new GLTFExporter();
     const options = {
         binary: true, // Export as .glb
@@ -646,26 +665,59 @@ async function loadModelFromFile(file) {
     const arrayBuffer = await file.arrayBuffer();
     try {
         let model;
-        if (name.endsWith('.glb')) {
+
+        // Try ModelIO (studio pipeline) first — supports GLB, GLTF, OBJ, STL, PLY, FBX
+        const modelIO = window.ProModelerApp?.modelIO;
+        if (modelIO) {
+            try {
+                const result = await modelIO.importFile(file, { frame: true, addToScene: true });
+                if (result) {
+                    dbg.log('Model imported via ModelIO:', file.name);
+                    removeImportedModelButton.style.display = 'inline-block';
+                    return;
+                }
+            } catch (mioErr) {
+                dbg.warn('ModelIO import failed, falling back to built-in loaders:', mioErr);
+            }
+        }
+
+        // Fallback: built-in loaders
+        if (name.endsWith('.glb') || name.endsWith('.gltf')) {
+            const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
             const loader = new GLTFLoader();
-            const gltf = await new Promise((resolve, reject) => {
-                loader.parse(arrayBuffer, '', resolve, reject);
-            });
-            model = gltf.scene || gltf.scenes?.[0];
-        } else if (name.endsWith('.gltf')) {
-            // glTF (JSON) typically requires a string plus external resources; try parse from text
-            const text = new TextDecoder().decode(arrayBuffer);
-            const loader = new GLTFLoader();
-            const gltf = await new Promise((resolve, reject) => {
-                loader.parse(text, '', resolve, reject);
-            });
-            model = gltf.scene || gltf.scenes?.[0];
+            if (name.endsWith('.glb')) {
+                const gltf = await new Promise((resolve, reject) => {
+                    loader.parse(arrayBuffer, '', resolve, reject);
+                });
+                model = gltf.scene || gltf.scenes?.[0];
+            } else {
+                const text = new TextDecoder().decode(arrayBuffer);
+                const gltf = await new Promise((resolve, reject) => {
+                    loader.parse(text, '', resolve, reject);
+                });
+                model = gltf.scene || gltf.scenes?.[0];
+            }
         } else if (name.endsWith('.obj')) {
             const text = new TextDecoder().decode(arrayBuffer);
+            const { OBJLoader } = await import("three/addons/loaders/OBJLoader.js");
             const loader = new OBJLoader();
             model = loader.parse(text);
+        } else if (name.endsWith('.stl')) {
+            const { STLLoader } = await import("three/addons/loaders/STLLoader.js");
+            const loader = new STLLoader();
+            const geometry = loader.parse(arrayBuffer);
+            model = new THREE.Mesh(geometry);
+        } else if (name.endsWith('.ply')) {
+            const { PLYLoader } = await import("three/addons/loaders/PLYLoader.js");
+            const loader = new PLYLoader();
+            const geometry = loader.parse(arrayBuffer);
+            model = new THREE.Mesh(geometry);
+        } else if (name.endsWith('.fbx')) {
+            const { FBXLoader } = await import("three/addons/loaders/FBXLoader.js");
+            const loader = new FBXLoader();
+            model = loader.parse(arrayBuffer, '');
         } else {
-            alert('Unsupported file type. Supported: .glb .gltf .obj');
+            alert('Unsupported file type. Supported: .glb .gltf .obj .stl .ply .fbx');
             return;
         }
 
@@ -674,8 +726,18 @@ async function loadModelFromFile(file) {
             return;
         }
 
+        // Validate geometry integrity
+        const validation = validateModel(model);
+        if (!validation.valid) {
+            dbg.warn('Model validation issues:', validation.issues);
+            // Continue anyway — show warning but don't block import
+            if (validation.issues.length > 0) {
+                console.warn('[MAIM] Validation:', validation.issues.join('; '));
+            }
+        }
+        dbg.log(`Model stats: ${validation.stats.meshCount} meshes, ${validation.stats.totalVerts} vertices`);
+
         // Normalize: scale + floor + centre + face camera, then frame.
-        // Wrapper root holds the transforms so the GLTF root rotation is kept.
         const norm = normalizeImport(model, camera, {
             targetSize: 5,
             faceCamera: true,
@@ -772,21 +834,32 @@ function prepareModelForScene(model, displayName, options = {}) {
     return wrapper;
 }
 
-function addImportedModelToScene(model, displayName) {
-    // Remove previous imported model if present
-    if (scene.userData.importedModel) {
-        scene.remove(scene.userData.importedModel);
-        disposeHierarchy(scene.userData.importedModel);
-        scene.userData.importedModel = null;
+function clearImportedModels() {
+    const models = scene.userData.importedModels || [];
+    for (const m of models) {
+        scene.remove(m);
+        disposeHierarchy(m);
     }
+    scene.userData.importedModels = [];
+    scene.userData.importedModel = null;
+    scene.userData.assembledModel = null;
+    originalsHidden = false;
+    removeImportedModelButton.style.display = 'none';
+    toggleOriginalsButton.style.display = 'none';
+    updateAssembleButton();
+}
+
+function addImportedModelToScene(model, displayName) {
+    if (!scene.userData.importedModels) scene.userData.importedModels = [];
 
     // Prepare the model for the scene: center, normalize, ensure materials
     const prepared = prepareModelForScene(model, displayName, { targetHeight: 2.0 });
 
-    // Position the imported model near the humanoid root if available
-    const offset = new THREE.Vector3(2.5, 0, 0); // place it to the right of the humanoid by default
+    // Position: spread imported models side-by-side
+    const modelIndex = scene.userData.importedModels.length;
+    const spacing = 3.0;
+    const offset = new THREE.Vector3(2.5 + modelIndex * spacing, 0, 0);
     if (humanoidModel) {
-        // Compute a conservative ground offset so imported model sits on ground
         const pelvisHeight = modelParts.pelvis ? modelParts.pelvis.geometry.parameters.height : 0.5;
         prepared.position.copy(humanoidModel.position).add(offset);
         prepared.position.y = Math.max(humanoidModel.position.y - pelvisHeight, 0);
@@ -794,15 +867,116 @@ function addImportedModelToScene(model, displayName) {
         prepared.position.set(0, 0, 0);
     }
 
-    // Add to scene and keep reference for later removal/export
     scene.add(prepared);
+    scene.userData.importedModels.push(prepared);
     scene.userData.importedModel = prepared;
     removeImportedModelButton.style.display = 'inline-block';
-
-    // Convenience: when exporting, users may want the imported model included.
-    // We do NOT automatically parent it under humanoidModel to avoid surprising reparenting,
-    // but provide a small utility to attach it when exporting if needed.
     prepared.userData.canBeAttachedToHumanoid = true;
+}
+
+/** Show the Assemble button when multiple models are imported */
+function updateAssembleButton() {
+    const count = (scene.userData.importedModels || []).length;
+    assembleModelButton.style.display = count >= 2 ? 'inline-block' : 'none';
+}
+
+/** Refresh the import history panel list */
+function refreshHistoryPanel() {
+    const history = getImportHistory();
+    historyList.innerHTML = '';
+    if (history.length === 0) {
+        const li = document.createElement('li');
+        li.textContent = 'No imports yet.';
+        li.style.color = '#888';
+        li.style.cursor = 'default';
+        historyList.appendChild(li);
+        return;
+    }
+    // Show newest first
+    [...history].reverse().forEach((entry, idx) => {
+        const li = document.createElement('li');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'history-name';
+        nameSpan.textContent = entry.name || 'Unnamed';
+        nameSpan.title = entry.name;
+        li.appendChild(nameSpan);
+
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'history-time';
+        const d = new Date(entry.timestamp);
+        timeSpan.textContent = d.toLocaleTimeString();
+        li.appendChild(timeSpan);
+
+        if (entry.source instanceof File) {
+            const reimportBtn = document.createElement('button');
+            reimportBtn.className = 'history-reimport-btn';
+            reimportBtn.textContent = 'Re-import';
+            reimportBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                clearImportedModels();
+                await loadModelFromFile(entry.source);
+                refreshHistoryPanel();
+            });
+            li.appendChild(reimportBtn);
+        }
+
+        historyList.appendChild(li);
+    });
+}
+
+/** Combine all imported models into a single group using MAIM's assembleModel */
+function onAssembleModels() {
+    const models = scene.userData.importedModels || [];
+    if (models.length < 2) {
+        alert('Import at least 2 models before assembling.');
+        return;
+    }
+
+    // Clone each original so we don't destroy them
+    const clones = models.map(m => m.clone(true));
+
+    // Use assembleModel from maim.js to combine the clones
+    const assembled = assembleModel(clones, { name: 'Assembled Model', center: false });
+
+    // Position near the humanoid
+    if (humanoidModel) {
+        const pelvisHeight = modelParts.pelvis ? modelParts.pelvis.geometry.parameters.height : 0.5;
+        assembled.position.copy(humanoidModel.position).add(new THREE.Vector3(2.5, 0, 0));
+        assembled.position.y = Math.max(humanoidModel.position.y - pelvisHeight, 0);
+    }
+
+    scene.add(assembled);
+
+    // Add assembled group to tracked imports (originals remain in scene)
+    scene.userData.importedModels.push(assembled);
+    scene.userData.importedModel = assembled;
+    assembled.userData.canBeAttachedToHumanoid = true;
+
+    // Store assembled reference and hide originals by default
+    scene.userData.assembledModel = assembled;
+    originalsHidden = true;
+    for (const m of models) m.visible = false;
+    toggleOriginalsButton.style.display = 'inline-block';
+    toggleOriginalsButton.textContent = 'Show Originals';
+
+    updateAssembleButton();
+    updatePartListUI();
+    dbg.log('Assembled', models.length, 'models into', assembled.name, '(originals hidden)');
+}
+
+let originalsHidden = false;
+
+/** Toggle visibility of original individual models */
+function toggleOriginalsVisibility() {
+    originalsHidden = !originalsHidden;
+    const assembled = scene.userData.assembledModel;
+    const models = scene.userData.importedModels || [];
+    for (const m of models) {
+        if (m === assembled) continue;
+        m.visible = originalsHidden;
+    }
+    toggleOriginalsButton.textContent = originalsHidden ? 'Show Originals' : 'Hide Originals';
 }
 
 // --- Model and Animation Functions ---
@@ -1066,15 +1240,31 @@ function updateModelProportions() {
 }
 
 function updatePartListUI() {
-    partList.innerHTML = ''; // Clear existing list
-    const partNames = Object.keys(modelParts).sort(); // Sort for consistent order
-    
+    partList.innerHTML = '';
+
+    // Humanoid parts
+    const partNames = Object.keys(modelParts).sort();
     partNames.forEach(partName => {
         const li = document.createElement('li');
         li.textContent = partName;
         li.dataset.partname = partName;
         li.title = `Select ${partName}`;
         partList.appendChild(li);
+    });
+
+    // Imported / assembled model parts — only direct children (one level deep)
+    const imported = scene.userData.importedModels || [];
+    imported.forEach((model, idx) => {
+        const modelName = model.name || `imported_${idx}`;
+        for (const child of model.children) {
+            const label = child.name || `${modelName}_part`;
+            const li = document.createElement('li');
+            li.textContent = `📦 ${label}`;
+            li.dataset.partname = `📦 ${label}`;
+            li.dataset.source = 'imported';
+            li.title = `Select imported part: ${label}`;
+            partList.appendChild(li);
+        }
     });
 }
 
@@ -1219,8 +1409,21 @@ function onPoseSelectChange(event) {
 function onPartListClick(event) {
     if (event.target && event.target.tagName === 'LI') {
         const partName = event.target.dataset.partname;
+        const source = event.target.dataset.source;
         if (partName && modelParts[partName]) {
             selectPart(modelParts[partName]);
+        } else if (source === 'imported') {
+            // Find the part in imported models by matching name
+            const cleanName = partName.replace(/^📦\s*/, '');
+            const imported = scene.userData.importedModels || [];
+            for (const model of imported) {
+                for (const child of model.children) {
+                    if (child.name === cleanName) {
+                        selectPart(child);
+                        return;
+                    }
+                }
+            }
         }
     }
 }
@@ -1235,20 +1438,37 @@ function onCanvasClick(event) {
 
     raycaster.setFromCamera(mouse, camera);
 
-    const intersects = raycaster.intersectObjects(humanoidModel.children, true);
+    // Collect raycast targets: humanoid children + all imported model children
+    const targets = [...humanoidModel.children];
+    const imported = scene.userData.importedModels || [];
+    for (const m of imported) targets.push(...m.children);
+
+    const intersects = raycaster.intersectObjects(targets, true);
 
     if (intersects.length > 0) {
-        // Find the root part group from the intersected mesh
         let clickedObject = intersects[0].object;
         let partGroup = clickedObject;
-        
-        // Traverse up to find the object that is a direct key in modelParts
+
+        // First try humanoid modelParts
         while (partGroup && !modelParts[partGroup.name]) {
              partGroup = partGroup.parent;
         }
 
         if (partGroup && modelParts[partGroup.name]) {
             selectPart(partGroup);
+        } else {
+            // Try imported model parts — find the direct child of an imported model
+            partGroup = clickedObject;
+            while (partGroup && partGroup.parent) {
+                const parent = partGroup.parent;
+                if (imported.includes(parent)) {
+                    // partGroup is a direct child of an imported model
+                    selectPart(partGroup);
+                    return;
+                }
+                partGroup = parent;
+            }
+            deselectPart();
         }
     } else {
         deselectPart();
@@ -1266,8 +1486,10 @@ function selectPart(part) {
 
     // Highlight in list
     const partListItems = document.querySelectorAll('#part-list li');
+    const selectedLabel = part.name;
     partListItems.forEach(li => {
-        li.classList.toggle('selected', li.dataset.partname === part.name);
+        const lpn = li.dataset.partname;
+        li.classList.toggle('selected', lpn === selectedLabel || lpn === `📦 ${selectedLabel}`);
     });
 }
 

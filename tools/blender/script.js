@@ -2,8 +2,6 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
@@ -633,7 +631,7 @@ export function init() {
     scene.add(directionalLight);
     gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x888888);
     scene.add(gridHelper);
-    gltfLoader = new GLTFLoader();
+    import("three/addons/loaders/GLTFLoader.js").then(m=>{gltfLoader=new m.GLTFLoader();}).catch(e=>dbg.warn("GLTFLoader load failed",e));
     memoryUsageSpan = document.getElementById('memory-usage');
     const fontLoader = new FontLoader();
     let loadedFontsCount = 0;
@@ -1108,6 +1106,7 @@ function setupMenuAndFileInput() {
 }
 
 async function exportGLBModel() {
+    const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
     const exporter = new GLTFExporter();
     let objectToExport = new THREE.Group();
     let fileName = "scene.glb";
