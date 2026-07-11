@@ -9,7 +9,27 @@
 import * as THREE from 'three';
 
 /** History of imported models for undo/re-import */
-const _importHistory = [];
+const HISTORY_STORAGE_KEY = 'kamikazzi_pose_import_history';
+
+function _loadHistory() {
+    try {
+        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch (_) { return []; }
+}
+
+function _saveHistory() {
+    try {
+        // Store only serializable metadata (no File/Blob references)
+        const serializable = _importHistory.map(e => ({
+            name: e.name,
+            timestamp: e.timestamp,
+        }));
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(serializable));
+    } catch (_) { /* quota exceeded or private browsing — silently ignore */ }
+}
+
+const _importHistory = _loadHistory();
 
 /**
  * Import a model file and add it to the scene.
@@ -29,6 +49,7 @@ export async function importModel(source, opts = {}) {
     try {
       const result = await modelIO.importFile(source, { frame: true, addToScene: true });
       _importHistory.push({ source, timestamp: Date.now(), name: result?.name || 'import' });
+      _saveHistory();
       return result;
     } catch (_) {
       // ModelIO failed, fall through to GLTFLoader
@@ -49,6 +70,7 @@ export async function importModel(source, opts = {}) {
 
       if (scene) scene.add(root);
       _importHistory.push({ source, timestamp: Date.now(), name: root.name || 'import' });
+      _saveHistory();
       resolve(root);
     };
 
@@ -150,7 +172,7 @@ function centerAtOrigin(obj) {
 }
 
 export function getImportHistory() { return [..._importHistory]; }
-export function clearImportHistory() { _importHistory.length = 0; }
+export function clearImportHistory() { _importHistory.length = 0; _saveHistory(); }
 
 export function maimInfo() {
   return {

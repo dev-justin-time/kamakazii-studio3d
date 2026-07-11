@@ -188,6 +188,9 @@
         <button id="import-model-button" title="Import model (.glb .gltf .obj .stl .ply .fbx)">Import Model</button>
         <button id="assemble-model-button" title="Combine all imported models into one group" style="display:none;">Assemble</button>
         <button id="toggle-originals-button" title="Show/hide original individual models" style="display:none;">Hide Originals</button>
+        <button id="wireframe-toggle-button" title="Toggle wireframe on assembled model" style="display:none;">Wireframe</button>
+        <button id="undo-assembly-button" title="Remove assembled group, keep individual models" style="display:none;">Undo Assembly</button>
+        <button id="merge-humanoid-button" title="Parent assembled model under humanoid for combined GLB export" style="display:none;">Merge to Humanoid</button>
         <button id="remove-imported-model-button" title="Remove imported model" style="display:none;">Remove Model</button>
 
         <div class="speed-control-group">
@@ -212,6 +215,14 @@
                 <button id="load-json-button">Load Animation</button>
                 <button id="cancel-json-import-button">Cancel</button>
             </div>
+        </div>
+    </div>
+    <!-- Drag-and-drop overlay -->
+    <div id="drop-overlay" style="display:none;">
+        <div class="drop-overlay-content">
+            <div class="drop-icon">📦</div>
+            <div class="drop-text">Drop model files here</div>
+            <div class="drop-subtext">.glb .gltf .obj .stl .ply .fbx</div>
         </div>
     </div>
     <script type="importmap">

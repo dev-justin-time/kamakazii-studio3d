@@ -83,6 +83,9 @@ const importModelInput = document.getElementById('import-model-input');
 const importModelButton = document.getElementById('import-model-button');
 const assembleModelButton = document.getElementById('assemble-model-button');
 const toggleOriginalsButton = document.getElementById('toggle-originals-button');
+const undoAssemblyButton = document.getElementById('undo-assembly-button');
+const mergeHumanoidButton = document.getElementById('merge-humanoid-button');
+const wireframeToggleButton = document.getElementById('wireframe-toggle-button');
 const removeImportedModelButton = document.getElementById('remove-imported-model-button');
 
 // Import history UI elements
@@ -303,6 +306,9 @@ function init() {
         importModelInput.value = '';
     });
     assembleModelButton.addEventListener('click', onAssembleModels);
+    undoAssemblyButton.addEventListener('click', undoAssembly);
+    mergeHumanoidButton.addEventListener('click', mergeToHumanoid);
+    wireframeToggleButton.addEventListener('click', toggleWireframe);
     toggleOriginalsButton.addEventListener('click', toggleOriginalsVisibility);
     openHistoryPanelBtn.addEventListener('click', () => {
         refreshHistoryPanel();
@@ -417,6 +423,62 @@ function init() {
         jsonOutputContainer.style.display = 'flex';
         openJsonPanelBtn.style.display = 'none';
     });
+
+    // --- Drag-and-drop model import ---
+    const dropOverlay = document.getElementById('drop-overlay');
+    let dragCounter = 0;
+
+    function isModelFile(file) {
+        const name = file.name.toLowerCase();
+        return /\.(glb|gltf|obj|stl|ply|fbx)$/i.test(name);
+    }
+
+    function onDragEnter(e) {
+        e.preventDefault();
+        dragCounter++;
+        if (e.dataTransfer && e.dataTransfer.types.includes('Files')) {
+            dropOverlay.style.display = 'flex';
+        }
+    }
+
+    function onDragOver(e) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    }
+
+    function onDragLeave(e) {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+            dragCounter = 0;
+            dropOverlay.style.display = 'none';
+        }
+    }
+
+    async function onDrop(e) {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.style.display = 'none';
+
+        const files = Array.from(e.dataTransfer.files).filter(isModelFile);
+        if (files.length === 0) {
+            dbg.warn('Drag-and-drop: no supported model files found in drop');
+            return;
+        }
+
+        // Clear previous imports before loading new batch
+        clearImportedModels();
+        for (const file of files) {
+            await loadModelFromFile(file);
+        }
+        updateAssembleButton();
+        dbg.log('Drag-and-drop imported', files.length, 'model(s)');
+    }
+
+    document.addEventListener('dragenter', onDragEnter);
+    document.addEventListener('dragover', onDragOver);
+    document.addEventListener('dragleave', onDragLeave);
+    document.addEventListener('drop', onDrop);
 
     // Attempt to start audio on page load. It will likely be suspended
     // and will require a user gesture (e.g., click) to actually start playing.
@@ -835,6 +897,9 @@ function prepareModelForScene(model, displayName, options = {}) {
 }
 
 function clearImportedModels() {
+    // If merged, unmerge first so assembled model is back in scene graph for proper disposal
+    if (isMergedToHumanoid) unmergeFromHumanoid();
+
     const models = scene.userData.importedModels || [];
     for (const m of models) {
         scene.remove(m);
@@ -846,6 +911,11 @@ function clearImportedModels() {
     originalsHidden = false;
     removeImportedModelButton.style.display = 'none';
     toggleOriginalsButton.style.display = 'none';
+    undoAssemblyButton.style.display = 'none';
+    wireframeToggleButton.style.display = 'none';
+    wireframeOn = false;
+    mergeHumanoidButton.style.display = 'none';
+    isMergedToHumanoid = false;
     updateAssembleButton();
 }
 
@@ -959,6 +1029,13 @@ function onAssembleModels() {
     for (const m of models) m.visible = false;
     toggleOriginalsButton.style.display = 'inline-block';
     toggleOriginalsButton.textContent = 'Show Originals';
+    undoAssemblyButton.style.display = 'inline-block';
+    wireframeToggleButton.style.display = 'inline-block';
+    wireframeOn = false;
+    wireframeToggleButton.textContent = 'Wireframe';
+    mergeHumanoidButton.style.display = 'inline-block';
+    mergeHumanoidButton.textContent = 'Merge to Humanoid';
+    isMergedToHumanoid = false;
 
     updateAssembleButton();
     updatePartListUI();
@@ -966,6 +1043,102 @@ function onAssembleModels() {
 }
 
 let originalsHidden = false;
+let wireframeOn = false;
+let isMergedToHumanoid = false;
+
+/** Parent the assembled model under humanoidModel for combined GLB export */
+function mergeToHumanoid() {
+    const assembled = scene.userData.assembledModel;
+    if (!assembled || !humanoidModel) return;
+
+    // Deselect any selected part (transform controls would detach from wrong parent)
+    deselectPart();
+
+    // Compute the world transform so the assembled model stays visually in place
+    assembled.applyMatrix4(new THREE.Matrix4().copy(humanoidModel.matrixWorld).invert());
+
+    // Reparent from scene to humanoidModel
+    scene.remove(assembled);
+    humanoidModel.add(assembled);
+
+    isMergedToHumanoid = true;
+    mergeHumanoidButton.textContent = 'Unmerge from Humanoid';
+    mergeHumanoidButton.title = 'Remove assembled model from humanoid hierarchy';
+    dbg.log('Merged assembled model under humanoidModel for combined export');
+}
+
+/** Remove assembled model from humanoidModel and restore it to the scene */
+function unmergeFromHumanoid() {
+    const assembled = scene.userData.assembledModel;
+    if (!assembled || !humanoidModel) return;
+
+    // Deselect any selected part
+    deselectPart();
+
+    // Compute the world transform so it stays visually in place
+    assembled.applyMatrix4(new THREE.Matrix4().copy(humanoidModel.matrixWorld));
+
+    // Reparent from humanoidModel back to scene
+    humanoidModel.remove(assembled);
+    scene.add(assembled);
+
+    isMergedToHumanoid = false;
+    mergeHumanoidButton.textContent = 'Merge to Humanoid';
+    mergeHumanoidButton.title = 'Parent assembled model under humanoid for combined GLB export';
+    dbg.log('Unmerged assembled model from humanoidModel');
+}
+
+/** Toggle wireframe rendering on the assembled model */
+function toggleWireframe() {
+    const assembled = scene.userData.assembledModel;
+    if (!assembled) return;
+    wireframeOn = !wireframeOn;
+    assembled.traverse(child => {
+        if (child.isMesh && child.material) {
+            child.material.wireframe = wireframeOn;
+        }
+    });
+    wireframeToggleButton.textContent = wireframeOn ? 'Solid' : 'Wireframe';
+}
+
+/** Remove assembled group and restore individual models */
+function undoAssembly() {
+    const assembled = scene.userData.assembledModel;
+    if (!assembled) return;
+
+    // Deselect any selected part (prevent dangling transform controls on disposed object)
+    deselectPart();
+
+    // If merged under humanoid, unmerge first so it's back in scene graph
+    if (isMergedToHumanoid) unmergeFromHumanoid();
+
+    // Remove assembled from scene and dispose
+    scene.remove(assembled);
+    disposeHierarchy(assembled);
+
+    // Remove assembled from tracked imports
+    const models = scene.userData.importedModels || [];
+    const idx = models.indexOf(assembled);
+    if (idx !== -1) models.splice(idx, 1);
+
+    // Show all originals
+    originalsHidden = false;
+    for (const m of models) m.visible = true;
+
+    // Reset state
+    scene.userData.assembledModel = null;
+    scene.userData.importedModel = models.length > 0 ? models[models.length - 1] : null;
+    toggleOriginalsButton.style.display = 'none';
+    undoAssemblyButton.style.display = 'none';
+    wireframeToggleButton.style.display = 'none';
+    wireframeOn = false;
+    mergeHumanoidButton.style.display = 'none';
+    isMergedToHumanoid = false;
+
+    updateAssembleButton();
+    updatePartListUI();
+    dbg.log('Undid assembly —', models.length, 'individual models remain');
+}
 
 /** Toggle visibility of original individual models */
 function toggleOriginalsVisibility() {

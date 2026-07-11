@@ -5,16 +5,6 @@ import { safeGetColor, safeCopyColor, safeSetHex, safeSetEmissive } from './mate
 import JSZip from 'jszip';
 import { dbg } from './dbg.js';
 import { state } from './state.js';
-// nipplejs is now used inside InputManager, not here directly
-// import nipplejs from 'nipplejs'; 
-
-// ── Debug helper — all console.warn/error pass through here, gated by window.DEBUG ──
-const DBG = typeof window !== 'undefined' && window.DEBUG === true;
-const _localDbg = {
-  warn: (...args) => { if (DBG) _localDbg.warn(...args); },
-  error: (...args) => { if (DBG) _localDbg.error(...args); },
-  log: (...args) => { if (DBG) _localDbg.log(...args); },
-};
 
 // Import Systems
 import { ProceduralSystem } from '../systems/ProceduralSystem.js';
@@ -39,6 +29,10 @@ import { MarketplaceUI } from '../marketplace/marketplace-ui.js';
 // Import normalisation: scales + floor-aligns + centres + yaws imported models
 // so they always land on the floor at a sensible size facing the camera.
 import { frameAtDistance } from '../editor/import-normalize.js';
+
+// nipplejs is now used inside InputManager, not here directly
+// import nipplejs from 'nipplejs'; 
+
 
 class ProModelerStudio {
     constructor() {
@@ -360,7 +354,7 @@ class ProModelerStudio {
             self._volumetricFogInstance = fog;
             return fog;
         }).catch(err => {
-            _localDbg.warn('[Engine] VolumetricFog init failed:', err);
+            dbg.warn('[Engine] VolumetricFog init failed:', err);
             self._volumetricFogInstance = null;
             return null;
         });
@@ -376,7 +370,7 @@ class ProModelerStudio {
             create: async () => {
                 const fog = await self._volumetricFogReady;
                 if (!fog) {
-                    _localDbg.warn('[Engine] VolumetricFog not available');
+                    dbg.warn('[Engine] VolumetricFog not available');
                     self.ui.log('Volumetric fog unavailable — resources failed to load', 'error');
                     return;
                 }
@@ -531,7 +525,7 @@ class ProModelerStudio {
                 get() { return self.selectedObject; },
             });
             return self.modelIO;
-        }).catch(err => { _localDbg.warn('[ModelIO] lazy init failed:', err); return null; });
+        }).catch(err => { dbg.warn('[ModelIO] lazy init failed:', err); return null; });
 
         this.importExport = {
             importModel: async (source) => {
@@ -569,6 +563,8 @@ class ProModelerStudio {
         if (this.modelIO) return this.modelIO.importFile(file);
         throw new Error('ModelIO not initialized');
     }
+
+    initializeAdvancedLighting() {
         const self = this;
         this.advancedLighting = {
             /**
@@ -618,7 +614,7 @@ class ProModelerStudio {
                             self.ui.log(`Lightmap baked for ${results.length} mesh${results.length !== 1 ? 'es' : ''}`, 'success');
                         }
                     } catch (e) {
-                        _localDbg.error('[Engine] Lightmap bake failed:', e);
+                        dbg.error('[Engine] Lightmap bake failed:', e);
                         self.ui.log(`Lightmap bake failed: ${e.message}`, 'error');
                     }
                 })();
@@ -657,7 +653,7 @@ class ProModelerStudio {
     _mountMarketplace() {
         const panel = document.querySelector('.marketplace-panel');
         if (!panel) {
-            _localDbg.warn('[Marketplace] .marketplace-panel not found');
+            dbg.warn('[Marketplace] .marketplace-panel not found');
             return;
         }
 
@@ -690,7 +686,7 @@ class ProModelerStudio {
 
             this.ui.log('Marketplace loaded — browse, publish, and purchase assets.', 'success');
         } catch (err) {
-            _localDbg.error('[Marketplace] Failed to initialize:', err);
+            dbg.error('[Marketplace] Failed to initialize:', err);
             panel.innerHTML = `<div class="k3d-mkt-error">
                 <i class="fas fa-exclamation-triangle"></i>
                 <h3>Failed to load Marketplace</h3>
@@ -843,10 +839,10 @@ class ProModelerStudio {
         this.morphTargets = {
             createTarget: (object, name) => {
                 if (!object.geometry) {
-                    _localDbg.warn('[Engine] morphTargets.createTarget: object has no geometry');
+                    dbg.warn('[Engine] morphTargets.createTarget: object has no geometry');
                     return;
                 }
-                _localDbg.warn('[Engine] morphTargets.createTarget is a simplified implementation — weight animation may not work as expected in complex rigs.');
+                dbg.warn('[Engine] morphTargets.createTarget is a simplified implementation — weight animation may not work as expected in complex rigs.');
                 const pos = object.geometry.attributes.position;
                 const target = pos.clone();
                 for(let i=0; i<target.count; i++) target.setY(i, target.getY(i) + Math.random()*0.5);
@@ -858,11 +854,11 @@ class ProModelerStudio {
             },
             setWeight: (object, name, weight) => {
                 if (!object) {
-                    _localDbg.warn('[Engine] morphTargets.setWeight: no object provided');
+                    dbg.warn('[Engine] morphTargets.setWeight: no object provided');
                     return;
                 }
                 if (!object.morphTargetInfluences) {
-                    _localDbg.warn('[Engine] morphTargets.setWeight: object has no morphTargetInfluences');
+                    dbg.warn('[Engine] morphTargets.setWeight: object has no morphTargetInfluences');
                     this.ui.log('Morph target weights: not available on this object', 'warning');
                     return;
                 }
@@ -1716,7 +1712,7 @@ class ProModelerStudio {
             this.ui.log(`Render complete! ${this.totalFrames} frames saved.`, 'success');
 
         } catch (err) {
-            _localDbg.error('Render error:', err);
+            dbg.error('Render error:', err);
             this.ui.log('Render failed. Check console.', 'error');
         } finally {
             // Restore state
